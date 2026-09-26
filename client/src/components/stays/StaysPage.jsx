@@ -45,7 +45,7 @@ export default function StaysPage({
       longitude: stay.longitude,
       photo_url: stay.photo_url,
       pricePerNight: stay.pricePerNight || 165,
-      rating: stay.rating || 4.8
+      rating: stay.rating || null
     };
     setCurrentBaseHotel(hotelObj);
     if (onUpdateTripHotel) onUpdateTripHotel(hotelObj);
@@ -139,7 +139,6 @@ export default function StaysPage({
             {filteredStays.map(stay => {
               const isBasecamp = currentBaseHotel?.name === stay.name;
               const nightlyUSD = stay.pricePerNight || 165;
-              const reviewsList = Array.isArray(stay.reviews) ? stay.reviews : [];
 
               return (
                 <div
@@ -187,15 +186,19 @@ export default function StaysPage({
                           <ShieldCheck className="w-3 h-3" />
                           <span>Verified Hotel</span>
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => onOpenReviews && onOpenReviews(stay)}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[11px] font-bold text-amber-400 hover:bg-black/80 transition-colors cursor-pointer"
-                        >
-                          <Star className="w-3 h-3 fill-amber-400" />
-                          <span>{stay.rating || '4.8'}</span>
-                          <span className="text-white/80 font-normal">({reviewsList.length || stay.reviewsCount || 120})</span>
-                        </button>
+                        {stay.rating ? (
+                          <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[11px] font-bold text-amber-400">
+                            <Star className="w-3 h-3 fill-amber-400" />
+                            <span>{stay.rating}</span>
+                            {stay.reviewsCount ? (
+                              <span className="text-white/80 font-normal">({stay.reviewsCount})</span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[10px] font-medium text-white/80">
+                            Google Maps
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -239,13 +242,15 @@ export default function StaysPage({
                         <span>Street View</span>
                       </button>
 
-                      <button
-                        onClick={() => onOpenReviews && onOpenReviews(stay)}
-                        className="py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-borderSoft text-[11px] font-semibold text-[#141413] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      <a
+                        href={stay.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stay.name + ' ' + (stay.address || currentCity))}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-borderSoft text-[11px] font-semibold text-[#141413] flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center"
                       >
-                        <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-                        <span>Real Reviews ({reviewsList.length})</span>
-                      </button>
+                        <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Google Reviews</span>
+                      </a>
                     </div>
 
                     {/* Live Google Hotels Booking Link */}

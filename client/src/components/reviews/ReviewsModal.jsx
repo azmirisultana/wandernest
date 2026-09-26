@@ -14,9 +14,10 @@ export default function ReviewsModal({ isOpen, onClose, place }) {
   if (!isOpen || !place) return null;
 
   const googleMapsUrl = place.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + (place.address || ''))}`;
-  const realRating = place.rating || 4.7;
-  const ratingCount = place.reviewsCount || 180;
+  const realRating = place.rating || null;
+  const ratingCount = place.reviewsCount || null;
   const verifiedReviews = Array.isArray(place.reviews) ? place.reviews : [];
+  const hasRealReviews = verifiedReviews.length > 0;
 
   const handleAddNote = (e) => {
     e.preventDefault();
@@ -57,7 +58,7 @@ export default function ReviewsModal({ isOpen, onClose, place }) {
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white text-emerald-800 border border-emerald-200 shadow-2xs flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                  <span>Real Traveler Reviews</span>
+                  <span>{hasRealReviews ? 'Google Places Reviews' : 'Google Maps Verified'}</span>
                 </span>
                 <span className="text-xs text-mutedText">{place.tagLabel || place.category}</span>
               </div>
@@ -79,37 +80,48 @@ export default function ReviewsModal({ isOpen, onClose, place }) {
         {/* Rating Overview & Live Google Verification */}
         <div className="p-6 border-b border-[#EBE7DF] bg-white space-y-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3.5">
-              <div className="text-3xl sm:text-4xl font-serif font-bold text-[#141413]">
-                {realRating}
-              </div>
-              <div>
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Star
-                      key={s}
-                      className={`w-4 h-4 ${
-                        s <= Math.round(realRating)
-                          ? 'fill-amber-400 text-amber-400'
-                          : 'text-[#EBE7DF]'
-                      }`}
-                    />
-                  ))}
+            {realRating ? (
+              <div className="flex items-center gap-3.5">
+                <div className="text-3xl sm:text-4xl font-serif font-bold text-[#141413]">
+                  {realRating}
                 </div>
+                <div>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star
+                        key={s}
+                        className={`w-4 h-4 ${
+                          s <= Math.round(realRating)
+                            ? 'fill-amber-400 text-amber-400'
+                            : 'text-[#EBE7DF]'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-mutedText mt-0.5">
+                    {ratingCount ? `Based on ${ratingCount.toLocaleString()}+ reviews on Google Maps` : 'Google Maps Rating'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="font-serif font-bold text-base text-[#141413]">
+                  Ratings & Reviews
+                </p>
                 <p className="text-xs text-mutedText mt-0.5">
-                  Based on {ratingCount.toLocaleString()}+ verified visitor reviews
+                  Hosted and verified directly on Google Maps
                 </p>
               </div>
-            </div>
+            )}
 
             {/* Direct Google Maps Live Reviews Link */}
             <a
               href={googleMapsUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-bold transition-all shadow-xs shrink-0"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-bold transition-all shadow-xs shrink-0"
             >
-              <span>View on Google Maps</span>
+              <span>Open on Google Maps</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
@@ -123,23 +135,25 @@ export default function ReviewsModal({ isOpen, onClose, place }) {
           {/* Navigation Tabs */}
           <div className="flex items-center justify-between pt-1 border-t border-borderSoft">
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveTab('verified')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'verified'
-                    ? 'bg-[#141413] text-white shadow-2xs'
-                    : 'bg-[#FAF8F5] text-mutedText hover:text-[#141413] border border-borderSoft'
-                }`}
-              >
-                Verified Reviews ({verifiedReviews.length})
-              </button>
+              {hasRealReviews && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('verified')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'verified'
+                      ? 'bg-[#141413] text-white shadow-2xs'
+                      : 'bg-[#FAF8F5] text-mutedText hover:text-[#141413] border border-borderSoft'
+                  }`}
+                >
+                  Google Reviews ({verifiedReviews.length})
+                </button>
+              )}
 
               <button
                 type="button"
                 onClick={() => setActiveTab('notes')}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'notes'
+                  activeTab === 'notes' || !hasRealReviews
                     ? 'bg-[#141413] text-white shadow-2xs'
                     : 'bg-[#FAF8F5] text-mutedText hover:text-[#141413] border border-borderSoft'
                 }`}
@@ -148,8 +162,8 @@ export default function ReviewsModal({ isOpen, onClose, place }) {
               </button>
             </div>
 
-            {/* Star Filter for Verified Reviews */}
-            {activeTab === 'verified' && verifiedReviews.length > 0 && (
+            {/* Star Filter for Real Google Reviews */}
+            {hasRealReviews && activeTab === 'verified' && (
               <div className="flex items-center gap-1 text-[11px]">
                 <button
                   type="button"
@@ -183,15 +197,15 @@ export default function ReviewsModal({ isOpen, onClose, place }) {
           </div>
         </div>
 
-        {/* Scrollable Reviews List */}
+        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[#FAF8F5]/50">
-          {activeTab === 'verified' ? (
+          {hasRealReviews && activeTab === 'verified' ? (
             filteredVerifiedReviews.length === 0 ? (
               <div className="text-center py-10 px-4 bg-white rounded-2xl border border-dashed border-[#EBE7DF] space-y-2">
                 <MessageSquare className="w-8 h-8 text-mutedText mx-auto opacity-50" />
                 <p className="text-xs font-semibold text-[#141413]">No reviews matching this rating filter</p>
                 <p className="text-[11px] text-mutedText">
-                  Switch back to "All" or check thousands of live reviews on Google Maps.
+                  Switch back to "All" or open Google Maps to read all visitor reviews.
                 </p>
               </div>
             ) : (
@@ -204,20 +218,26 @@ export default function ReviewsModal({ isOpen, onClose, place }) {
                     {/* Reviewer Header */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-2.5">
-                        <div className={`w-8 h-8 rounded-full ${rev.avatarColor || 'bg-[#C24B27]'} text-white font-bold text-xs flex items-center justify-center shrink-0`}>
-                          {rev.author?.charAt(0) || 'T'}
-                        </div>
+                        {rev.authorPhoto ? (
+                          <img
+                            src={rev.authorPhoto}
+                            alt={rev.author}
+                            className="w-8 h-8 rounded-full object-cover shrink-0"
+                          />
+                        ) : (
+                          <div className={`w-8 h-8 rounded-full ${rev.avatarColor || 'bg-[#C24B27]'} text-white font-bold text-xs flex items-center justify-center shrink-0`}>
+                            {rev.author?.charAt(0) || 'G'}
+                          </div>
+                        )}
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-bold text-xs text-[#141413]">{rev.author}</span>
-                            {rev.badge && (
-                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.2 rounded-md">
-                                ✓ {rev.badge}
-                              </span>
-                            )}
+                            <span className="text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200/80 px-1.5 py-0.2 rounded-md">
+                              Google Maps
+                            </span>
                           </div>
                           <span className="text-[11px] text-mutedText">
-                            {rev.location ? `${rev.location} • ` : ''}{rev.relativeTime}
+                            {rev.relativeTime}
                           </span>
                         </div>
                       </div>
@@ -243,6 +263,33 @@ export default function ReviewsModal({ isOpen, onClose, place }) {
                 ))}
               </div>
             )
+          ) : !hasRealReviews && activeTab !== 'notes' ? (
+            /* Honest, Transparent Direct Google Maps Notice */
+            <div className="text-center py-10 px-6 bg-white rounded-2xl border border-[#EBE7DF] space-y-4 shadow-2xs">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 mx-auto">
+                <ShieldCheck className="w-6 h-6 text-amber-600" />
+              </div>
+              <div className="space-y-1.5 max-w-md mx-auto">
+                <h4 className="font-serif font-bold text-base text-[#141413]">
+                  Live Google Business Reviews
+                </h4>
+                <p className="text-xs text-mutedText leading-relaxed">
+                  Real visitor reviews, authentic guest photos, and verified ratings for <span className="font-semibold text-[#141413]">{place.name}</span> are hosted directly on Google Maps.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <a
+                  href={googleMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-bold transition-all shadow-xs"
+                >
+                  <span>Open Real Reviews on Google Maps</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
           ) : (
             // User Notes Section
             userNotes.length === 0 ? (
@@ -250,7 +297,7 @@ export default function ReviewsModal({ isOpen, onClose, place }) {
                 <MessageSquare className="w-8 h-8 text-mutedText mx-auto opacity-50" />
                 <p className="text-xs font-semibold text-[#141413]">No trip notes recorded yet</p>
                 <p className="text-[11px] text-mutedText max-w-sm mx-auto">
-                  Add helpful tips on opening hours, reservation details, room preferences, or highlights for your itinerary below.
+                  Add personal notes, booking references, or tips for this spot below.
                 </p>
               </div>
             ) : (

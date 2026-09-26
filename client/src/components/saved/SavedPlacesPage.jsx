@@ -139,10 +139,12 @@ export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, o
                       <span className="text-[11px] font-semibold text-[#141413] bg-white/90 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/40 shadow-xs">
                         {place.tagLabel || (place.category === 'eat' ? 'Dining' : place.category === 'stay' ? 'Lodging' : 'Spot')}
                       </span>
-                      <span className="flex items-center gap-1 text-amber-600 font-bold bg-white/90 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/40 shadow-xs">
-                        <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
-                        <span>{place.rating || '4.8'}</span>
-                      </span>
+                      {place.rating && (
+                        <span className="flex items-center gap-1 text-amber-600 font-bold bg-white/90 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/40 shadow-xs">
+                          <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
+                          <span>{place.rating}</span>
+                        </span>
+                      )}
                     </div>
                   </div>
 

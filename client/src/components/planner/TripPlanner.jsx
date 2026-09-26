@@ -188,7 +188,7 @@ export default function TripPlanner({
       latitude: parseFloat(place.latitude || place.lat),
       longitude: parseFloat(place.longitude || place.lng),
       photo_url: place.photo_url || place.image,
-      rating: place.rating || 4.7
+      rating: place.rating || null
     };
     setBaseHotel(newHotel);
     if (onUpdateTrip) onUpdateTrip({ ...trip, hotel: newHotel });
@@ -259,7 +259,7 @@ export default function TripPlanner({
       longitude: parseFloat(place.longitude || place.lng) || 0,
       address: place.address || '',
       photo_url: place.photo_url || place.photoUrl || place.image || '',
-      rating: place.rating || 4.6,
+      rating: place.rating || null,
       estimated_time: '1-2 hours'
     };
 
@@ -1111,10 +1111,19 @@ export default function TripPlanner({
 
                             {/* Actions & Rating */}
                             <div className="mt-2.5 pt-2 border-t border-[#EBE7DF] flex items-center justify-between gap-2 flex-wrap">
-                              <span className="flex items-center gap-1 text-xs text-amber-500 font-semibold">
-                                <Star className="w-3.5 h-3.5 fill-amber-500" />
-                                <span>{place.rating} ({place.reviewsCount || 120})</span>
-                              </span>
+                              {place.rating ? (
+                                <span className="flex items-center gap-1 text-xs text-amber-500 font-semibold">
+                                  <Star className="w-3.5 h-3.5 fill-amber-500" />
+                                  <span>{place.rating}</span>
+                                  {place.reviewsCount ? (
+                                    <span className="text-mutedText font-normal">({place.reviewsCount})</span>
+                                  ) : null}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-mutedText font-medium">
+                                  {place.tagLabel || 'Spot'}
+                                </span>
+                              )}
 
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 {/* Set as Basecamp option for Stays */}
@@ -1667,10 +1676,12 @@ export default function TripPlanner({
                             <p className="text-[11px] text-mutedText truncate mt-0.5">
                               {hotel.address}
                             </p>
-                            <span className="flex items-center gap-1 text-[11px] text-amber-600 font-semibold mt-0.5">
-                              <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                              <span>{hotel.rating || 4.7}</span>
-                            </span>
+                            {hotel.rating && (
+                              <span className="flex items-center gap-1 text-[11px] text-amber-600 font-semibold mt-0.5">
+                                <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                                <span>{hotel.rating}</span>
+                              </span>
+                            )}
                           </div>
                         </div>
 

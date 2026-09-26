@@ -295,7 +295,6 @@ export default function PlaceSplitView({
           ) : (
             filteredPlaces.map((item, idx) => {
               const isSelected = selectedPlaceId === item.id;
-              const reviewsList = Array.isArray(item.reviews) ? item.reviews : [];
 
               return (
                 <div
@@ -334,18 +333,22 @@ export default function PlaceSplitView({
                         <span className="text-[10px] font-bold uppercase tracking-wider text-[#C24B27]">
                           {item.category === 'eat' ? '🍽 Dining' : item.category === 'stay' ? '🏨 Hotel' : '✦ Attraction'}
                         </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onOpenReviews) onOpenReviews(item);
-                          }}
-                          className="flex items-center gap-1 text-[11px] font-bold text-amber-500 hover:text-amber-600 transition-colors"
-                        >
-                          <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                          <span>{item.rating || 4.7}</span>
-                          <span className="text-mutedText text-[10px] font-normal">({reviewsList.length || 3})</span>
-                        </button>
+                        {item.rating ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onOpenReviews) onOpenReviews(item);
+                            }}
+                            className="flex items-center gap-1 text-[11px] font-bold text-amber-500 hover:text-amber-600 transition-colors"
+                          >
+                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                            <span>{item.rating}</span>
+                            {item.reviewsCount ? (
+                              <span className="text-mutedText text-[10px] font-normal">({item.reviewsCount})</span>
+                            ) : null}
+                          </button>
+                        ) : null}
                       </div>
 
                       <h4 className="font-bold text-sm text-[#141413] group-hover:text-[#C24B27] transition-colors line-clamp-1 mt-0.5">

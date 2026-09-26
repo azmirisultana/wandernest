@@ -83,121 +83,13 @@ function formatCategoryLabel(type, cat) {
   return 'Attraction & Sight';
 }
 
+
 /**
- * Generate authentic, helpful verified traveler reviews
+ * Note on Reviews:
+ * Real Google Business reviews are only returned when a valid GOOGLE_PLACES_API_KEY
+ * is provided in server/.env and returned directly by Google's Places API.
+ * No fake or simulated reviews are ever generated.
  */
-function generateAuthenticReviews(placeName, category, baseRating = 4.7, tagLabel = '', address = '') {
-  const hash = hashString(placeName);
-
-  const reviewerPool = [
-    { name: 'Elena Rostova', location: 'London, UK', avatarColor: 'bg-emerald-600', badge: 'Verified Traveler' },
-    { name: 'Marcus Chen', location: 'San Francisco, USA', avatarColor: 'bg-blue-600', badge: 'Local Guide Level 7' },
-    { name: 'Sophie Laurent', location: 'Paris, France', avatarColor: 'bg-rose-600', badge: 'Verified Explorer' },
-    { name: 'Liam O’Connor', location: 'Dublin, Ireland', avatarColor: 'bg-amber-600', badge: 'Verified Guest' },
-    { name: 'Aiko Tanaka', location: 'Tokyo, Japan', avatarColor: 'bg-indigo-600', badge: 'Food & Stay Enthusiast' },
-    { name: 'David Miller', location: 'Sydney, Australia', avatarColor: 'bg-teal-600', badge: 'Top 1% Reviewer' },
-    { name: 'Freja Lindqvist', location: 'Stockholm, Sweden', avatarColor: 'bg-violet-600', badge: 'Solo Traveler' },
-    { name: 'Mateo Rossi', location: 'Milan, Italy', avatarColor: 'bg-cyan-600', badge: 'Verified Explorer' }
-  ];
-
-  let reviewTemplates = [];
-
-  if (category === 'stay') {
-    reviewTemplates = [
-      {
-        text: `Exceptional stay at ${placeName}! The room was impeccably clean, and the bed was one of the most comfortable we have experienced while traveling. The soundproofing was top-notch despite being in a central location. Highly recommend the morning breakfast buffet!`,
-        rating: 5,
-        time: '3 days ago'
-      },
-      {
-        text: `The staff at ${placeName} went above and beyond to make our stay seamless. Check-in was fast, luggage storage was effortless before our flight, and the concierge arranged wonderful local dining reservations for us. We will definitely rebook next time.`,
-        rating: 5,
-        time: '2 weeks ago'
-      },
-      {
-        text: `Great boutique ambiance and lovely modern bathroom amenities. Wi-Fi was blazing fast which made remote work easy. Walking distance to public transit and excellent local cafes nearby.`,
-        rating: 4,
-        time: '1 month ago'
-      },
-      {
-        text: `Very comfortable and quiet retreat after long walking days exploring the city. The room was spacious by local standards and the bed was cozy. AC and shower water pressure were both fantastic.`,
-        rating: 5,
-        time: '2 months ago'
-      }
-    ];
-  } else if (category === 'eat') {
-    reviewTemplates = [
-      {
-        text: `An absolute culinary highlight! The flavors at ${placeName} were remarkably authentic and well-balanced. You can tell they use fresh, top-tier ingredients. Arrive slightly before peak hours or reserve ahead to secure a table easily.`,
-        rating: 5,
-        time: '4 days ago'
-      },
-      {
-        text: `The atmosphere here is warm, welcoming, and relaxed. Outstanding service and the staff offered great recommendations. Don't skip the house specialties and signature coffee—worth every penny!`,
-        rating: 5,
-        time: '1 week ago'
-      },
-      {
-        text: `Charming interior with very attentive hospitality. Delicious food presented beautifully. A wonderful spot for dinner with friends or a casual lunch recharge while exploring.`,
-        rating: 4,
-        time: '3 weeks ago'
-      },
-      {
-        text: `Hidden gem in the district! The aroma hits you the second you walk through the doors. Generous portions and very reasonable pricing for the quality.`,
-        rating: 5,
-        time: '1 month ago'
-      }
-    ];
-  } else {
-    // Landmark & Attraction
-    reviewTemplates = [
-      {
-        text: `A truly breathtaking spot that exceeds expectations! The architecture and history surrounding ${placeName} are fascinating. Early morning (around 8:30 AM) is by far the best time to visit if you want uninterrupted photos and quiet reflection.`,
-        rating: 5,
-        time: '5 days ago'
-      },
-      {
-        text: `Incredible cultural experience. Be sure to pick up the audio guide or read the plaques to appreciate the detailed craftsmanship. The views from the surrounding grounds are spectacular.`,
-        rating: 5,
-        time: '2 weeks ago'
-      },
-      {
-        text: `A must-see attraction on any itinerary here. It gets fairly lively in the afternoon, but the atmosphere remains electric. Very well maintained and easily accessible by public transit.`,
-        rating: 4,
-        time: '3 weeks ago'
-      },
-      {
-        text: `One of the most memorable stops on our trip. Beautiful during golden hour right before sunset when the lighting hits the facade. Allow at least 1.5 to 2 hours to fully take it all in.`,
-        rating: 5,
-        time: '1 month ago'
-      }
-    ];
-  }
-
-  // Select 3 to 4 reviews uniquely
-  const count = 3 + (hash % 2);
-  const reviews = [];
-
-  for (let i = 0; i < count; i++) {
-    const reviewer = reviewerPool[(hash + i * 3) % reviewerPool.length];
-    const template = reviewTemplates[(hash + i) % reviewTemplates.length];
-    const reviewRating = template.rating === 5 && i % 3 === 2 ? 4 : template.rating;
-
-    reviews.push({
-      id: `rev_${hash}_${i + 1}`,
-      author: reviewer.name,
-      location: reviewer.location,
-      avatarColor: reviewer.avatarColor,
-      rating: reviewRating,
-      relativeTime: template.time,
-      verified: true,
-      badge: category === 'stay' ? 'Verified Stay' : reviewer.badge,
-      text: template.text
-    });
-  }
-
-  return reviews;
-}
 
 /**
  * Main entry point to get places for a location and category
@@ -335,25 +227,24 @@ async function fetchGooglePlaces(lat, lng, category, radius, apiKey) {
 
     const tagLabel = formatCategoryLabel(p.primaryType, itemCat);
     const placeName = p.displayName?.text || 'Local Spot';
-    const rating = p.rating ? parseFloat(p.rating.toFixed(1)) : 4.7;
+    const rating = p.rating ? parseFloat(p.rating.toFixed(1)) : null;
     const cleanAddress = p.formattedAddress || 'Local District';
 
-    // Google API real reviews if returned by API, supplemented with authentic reviews
+    // Google API real reviews if returned directly by Google Places API
     let reviews = [];
     if (p.reviews && p.reviews.length > 0) {
       reviews = p.reviews.map((r, rIdx) => ({
         id: `g_rev_${rIdx + 1}`,
-        author: r.authorAttribution?.displayName || 'Verified Google Reviewer',
-        location: 'Verified Visitor',
+        author: r.authorAttribution?.displayName || 'Google Maps Reviewer',
+        authorPhoto: r.authorAttribution?.photoUri || null,
+        location: 'Google Maps Review',
         avatarColor: 'bg-blue-600',
         rating: r.rating || 5,
         relativeTime: r.relativePublishTimeDescription || 'Recently',
         verified: true,
-        badge: itemCat === 'stay' ? 'Verified Stay' : 'Google Reviewer',
-        text: r.text?.text || r.originalText?.text || 'Verified visitor review from Google Maps.'
-      }));
-    } else {
-      reviews = generateAuthenticReviews(placeName, itemCat, rating, tagLabel, cleanAddress);
+        badge: 'Google Review',
+        text: r.text?.text || r.originalText?.text || ''
+      })).filter(r => r.text && r.text.trim().length > 0);
     }
 
     return {
@@ -370,7 +261,7 @@ async function fetchGooglePlaces(lat, lng, category, radius, apiKey) {
       googleHotelsUrl: itemCat === 'stay' ? `https://www.google.com/travel/hotels?q=${encodeURIComponent(placeName + ' ' + cleanAddress)}` : null,
       opening_hours: openingHours,
       rating,
-      reviewsCount: p.userRatingCount || 240,
+      reviewsCount: p.userRatingCount || null,
       reviews,
       photo_url: photoUrl,
       pricePerNight: itemCat === 'stay' ? basePriceUSD : null,
@@ -475,12 +366,8 @@ async function fetchWikipediaLandmarks(lat, lng, radius = 8000) {
 
         // Prefer original full-resolution image from Wikipedia, else crisp fallback
         const photoUrl = summary.originalimage?.source || summary.thumbnail?.source || LANDMARK_IMAGES[idx % LANDMARK_IMAGES.length];
-        const rating = parseFloat((4.6 + ((geo.pageid % 4) * 0.1)).toFixed(1));
         const cleanName = geo.title.replace(/_\(.*?\)/g, '').trim();
         const address = summary.description ? `${summary.description}` : 'Historical & Cultural Landmark';
-
-        // Generate authentic verified traveler reviews
-        const reviews = generateAuthenticReviews(cleanName, 'do', rating, tagLabel, address);
 
         return {
           id: `wiki_${geo.pageid}`,
@@ -496,8 +383,8 @@ async function fetchWikipediaLandmarks(lat, lng, radius = 8000) {
           googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleanName + ' ' + address)}`,
           opening_hours: 'Open daily • Visitor Hours',
           rating,
-          reviewsCount: 350 + (geo.pageid % 800),
-          reviews,
+          reviewsCount: null,
+          reviews: [],
           photo_url: photoUrl,
           source: 'wikipedia'
         };
@@ -558,14 +445,10 @@ async function fetchNominatimLocalPois(lat, lng, category, radius = 8000) {
         const imagePool = sq.cat === 'stay' ? HOTEL_IMAGES : sq.cat === 'eat' ? DINING_IMAGES : LANDMARK_IMAGES;
         const photoUrl = imagePool[nameHash % imagePool.length];
 
-        const rating = parseFloat((4.5 + ((item.place_id % 5) * 0.1)).toFixed(1));
         const cleanName = name.trim();
         const tagLabel = formatCategoryLabel(sq.label, sq.cat);
 
-        // Authentic traveler reviews
-        const reviews = generateAuthenticReviews(cleanName, sq.cat, rating, tagLabel, fullAddress);
-
-        // Hotel-specific real pricing & amenities
+        // Clean POI details
         const baseNightlyRates = [120, 145, 175, 195, 230, 285, 340];
         const pricePerNight = sq.cat === 'stay' ? baseNightlyRates[nameHash % baseNightlyRates.length] : null;
 
@@ -596,8 +479,8 @@ async function fetchNominatimLocalPois(lat, lng, category, radius = 8000) {
           googleHotelsUrl: sq.cat === 'stay' ? `https://www.google.com/travel/hotels?q=${encodeURIComponent(cleanName + ' ' + fullAddress)}` : null,
           opening_hours: sq.cat === 'eat' ? 'Open daily 11:30 AM - 10:30 PM' : '24/7 Front Desk Concierge',
           rating,
-          reviewsCount: 160 + (item.place_id % 450),
-          reviews,
+          reviewsCount: null,
+          reviews: [],
           photo_url: photoUrl,
           pricePerNight,
           priceTier: pricePerNight ? (pricePerNight > 250 ? '$$$' : pricePerNight > 150 ? '$$' : '$') : '$$',
@@ -679,11 +562,8 @@ async function fetchFastOverpassPois(lat, lng, category, radius = 7000) {
           const imagePool = itemCat === 'stay' ? HOTEL_IMAGES : itemCat === 'eat' ? DINING_IMAGES : LANDMARK_IMAGES;
           const photoUrl = imagePool[nameHash % imagePool.length];
 
-          const rating = parseFloat((4.5 + ((el.id % 5) * 0.1)).toFixed(1));
           const address = tags['addr:street'] ? `${tags['addr:street']}, ${tags['addr:city'] || ''}`.trim() : 'Local District';
           const tagLabel = formatCategoryLabel(rawTag, itemCat);
-
-          const reviews = generateAuthenticReviews(name, itemCat, rating, tagLabel, address);
 
           const baseNightlyRates = [110, 135, 160, 185, 215, 270, 320];
           const pricePerNight = itemCat === 'stay' ? baseNightlyRates[nameHash % baseNightlyRates.length] : null;
@@ -711,8 +591,8 @@ async function fetchFastOverpassPois(lat, lng, category, radius = 7000) {
             googleHotelsUrl: itemCat === 'stay' ? `https://www.google.com/travel/hotels?q=${encodeURIComponent(name + ' ' + address)}` : null,
             opening_hours: tags.opening_hours || (itemCat === 'stay' ? '24/7 Front Desk Concierge' : 'Open daily'),
             rating,
-            reviewsCount: 140 + (el.id % 400),
-            reviews,
+            reviewsCount: null,
+            reviews: [],
             photo_url: photoUrl,
             pricePerNight,
             priceTier: pricePerNight ? (pricePerNight > 250 ? '$$$' : pricePerNight > 150 ? '$$' : '$') : '$$',

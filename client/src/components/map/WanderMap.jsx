@@ -240,10 +240,16 @@ export default function WanderMap({
                     </p>
 
                     <div className="flex items-center justify-between text-xs pt-1 border-t border-[#EBE7DF]">
-                      <span className="flex items-center gap-1 text-amber-500 font-semibold">
-                        <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                        <span>{item.rating || '4.8'}</span>
-                      </span>
+                      {item.rating ? (
+                        <span className="flex items-center gap-1 text-amber-500 font-semibold">
+                          <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                          <span>{item.rating}</span>
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-mutedText">
+                          Spot
+                        </span>
+                      )}
                       <span className="text-[11px] text-mutedText capitalize">
                         {item.category === 'eat' ? 'Dining' : item.category === 'stay' ? 'Lodging' : 'Attraction'}
                       </span>
@@ -343,13 +349,24 @@ export default function WanderMap({
                     </p>
                     
                     <div className="flex items-center justify-between text-xs pt-1 border-t border-[#EBE7DF]">
-                      <span className="flex items-center gap-1 text-amber-500 font-semibold">
-                        <Star className="w-3.5 h-3.5 fill-amber-500" />
-                        <span>{place.rating} ({place.reviewsCount})</span>
-                      </span>
-                      <span className="text-[11px] text-mutedText font-medium">
-                        {place.tagLabel || 'Spot'}
-                      </span>
+                      {place.rating ? (
+                        <>
+                          <span className="flex items-center gap-1 text-amber-500 font-semibold">
+                            <Star className="w-3.5 h-3.5 fill-amber-500" />
+                            <span>{place.rating}</span>
+                            {place.reviewsCount ? (
+                              <span className="text-mutedText font-normal">({place.reviewsCount})</span>
+                            ) : null}
+                          </span>
+                          <span className="text-[11px] text-mutedText font-medium">
+                            {place.tagLabel || 'Spot'}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-[11px] text-mutedText font-medium">
+                          {place.tagLabel || 'Spot'}
+                        </span>
+                      )}
                     </div>
 
                     {/* Street View & Reviews */}
