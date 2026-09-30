@@ -3,10 +3,26 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-let pool = null;
+const isRemote = (process.env.DB_HOST && process.env.DB_HOST !== 'localhost' && process.env.DB_HOST !== '127.0.0.1') || process.env.DB_SSL === 'true';
+
+// MySQL Connection Pool (supports cloud providers with SSL & local MySQL)
+export const pool = mysql.createPool({
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'wandernest',
+  port: Number(process.env.DB_PORT) || 3306,
+  ssl: isRemote ? { rejectUnauthorized: false } : undefined,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
+});
+
+export default pool;
+
 let isConnected = false;
 
-// In-memory fallback if local MySQL is temporarily not running
+// In-memory fallback if MySQL is temporarily not reachable
 export const memoryDb = {
   trips: new Map(),
   itinerary_items: new Map(),
@@ -16,28 +32,8 @@ export const memoryDb = {
 
 export async function initDatabase() {
   try {
-    // First test connecting to MySQL server (without selecting DB in case it doesn't exist)
-    const tempConn = await mysql.createConnection({
-      host: process.env.DB_HOST || 'localhost',
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || '',
-      port: Number(process.env.DB_PORT) || 3306
-    });
-
-    await tempConn.query(`CREATE DATABASE IF NOT EXISTS \`${process.env.DB_NAME || 'wandernest'}\`;`);
-    await tempConn.end();
-
-    // Now establish connection pool with target database
-    pool = mysql.createPool({
-      host: process.env.DB_HOST || 'localhost',
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'wandernest',
-      port: Number(process.env.DB_PORT) || 3306,
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0
-    });
+    // Test connectivity
+    await pool.query('SELECT 1;');
 
     // Create tables if they do not exist
     await pool.query(`

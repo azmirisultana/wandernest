@@ -15,7 +15,11 @@ const PORT = process.env.PORT || 5001;
 
 // Middlewares
 app.use(cors({
-  origin: true,
+  origin: [
+    "https://wandernest.vercel.app",
+    "https://wandernest-world.vercel.app",
+    "http://localhost:5173" // Keeps local testing working
+  ],
   credentials: true
 }));
 app.use(express.json());
