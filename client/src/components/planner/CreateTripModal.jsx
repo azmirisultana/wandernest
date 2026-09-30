@@ -127,13 +127,20 @@ export default function CreateTripModal({
 
     let targetDest = selectedDest;
     if (!targetDest && searchQuery.trim()) {
-      targetDest = {
-        name: searchQuery.trim(),
-        country: 'Worldwide',
-        latitude: 35.6762,
-        longitude: 139.6503,
-        cover_image: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80'
-      };
+      try {
+        const searchRes = await searchDestinations(searchQuery.trim());
+        if (searchRes.success && searchRes.data?.length > 0) {
+          targetDest = searchRes.data[0];
+        }
+      } catch (err) {
+        console.warn('Geocoding destination failed in CreateTripModal:', err);
+      }
+      if (!targetDest) {
+        targetDest = {
+          name: searchQuery.trim(),
+          country: 'Worldwide'
+        };
+      }
     }
 
     if (!targetDest) return;
@@ -141,18 +148,20 @@ export default function CreateTripModal({
     setSubmitting(true);
     try {
       const finalDays = Math.max(1, parseInt(daysCount) || calculateDaysDifference(startDate, endDate) || 5);
+      const parsedLat = parseFloat(targetDest.latitude || targetDest.lat);
+      const parsedLng = parseFloat(targetDest.longitude || targetDest.lng);
 
       const tripData = {
         id: `trip_${Date.now()}`,
         title: `${targetDest.name} Trip`,
         destination: targetDest.name,
         country: targetDest.country || 'Global',
-        latitude: parseFloat(targetDest.latitude || targetDest.lat) || 35.6762,
-        longitude: parseFloat(targetDest.longitude || targetDest.lng) || 139.6503,
+        latitude: !isNaN(parsedLat) ? parsedLat : null,
+        longitude: !isNaN(parsedLng) ? parsedLng : null,
         startDate: startDate || null,
         endDate: endDate || null,
         daysCount: finalDays,
-        cover_image: targetDest.cover_image || targetDest.photo_url || 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80',
+        cover_image: targetDest.cover_image || targetDest.photo_url || null,
         hotel: targetDest.hotel || null
       };
 

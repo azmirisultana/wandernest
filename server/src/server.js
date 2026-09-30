@@ -27,6 +27,22 @@ app.use('/api/weather', weatherRouter);
 app.use('/api/trips', tripsRouter);
 app.use('/api/flights', flightsRouter);
 
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    app: 'WanderNest Travel API',
+    endpoints: {
+      health: '/api/health',
+      destinations: '/api/destinations/featured',
+      search: '/api/destinations/search?q=:query',
+      weather: '/api/weather?lat=:lat&lng=:lng',
+      places: '/api/places?lat=:lat&lng=:lng',
+      flights: '/api/flights'
+    }
+  });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({

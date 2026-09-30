@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Search, MapPin, Calendar, Compass, ArrowRight, RotateCw,
   Utensils, Landmark, Eye, Coffee, Hotel, Star,
@@ -9,6 +9,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useSavedPlaces } from '../../context/SavedPlacesContext';
 import { searchDestinations, fetchPlaces, fetchFeaturedDestinations, deleteTrip } from '../../api';
+import { buildHotelUrls, isBasecampInCurrentCity as checkBasecampInCity } from '../../services/hotelLinks';
 
 // Precise Haversine distance formula
 function calculateDistanceKm(lat1, lon1, lat2, lon2) {
@@ -283,9 +284,7 @@ const POPULAR_DESTINATIONS = [
 const DESTINATION_EXPLORE_TABS = [
   { key: 'all', label: 'All Highlights', icon: Compass },
   { key: 'do', label: 'Top Sights & Things to Do', icon: Landmark },
-  { key: 'eat', label: 'Where to Eat & Drink', icon: Utensils },
-  { key: 'stay', label: 'Where to Stay', icon: Hotel },
-  { key: 'flight', label: 'Flight Schedules', icon: Plane }
+  { key: 'eat', label: 'Where to Eat & Drink', icon: Utensils }
 ];
 
 const SUB_CATEGORIES = [
@@ -379,9 +378,22 @@ export default function ExploreDashboard({
   const [selectedSubCategory, setSelectedSubCategory] = useState('all');
   const [sortByDistance, setSortByDistance] = useState(false);
 
-  // Persistent Sticky Floating Dock State
+  // Persistent Sticky Floating Dock State with session persistence
   const [showStickyDock, setShowStickyDock] = useState(false);
-  const [isStickyDismissed, setIsStickyDismissed] = useState(false);
+  const [isStickyDismissed, setIsStickyDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem('wandernest_trip_toast_dismissed') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const handleDismissStickyDock = () => {
+    setIsStickyDismissed(true);
+    try {
+      sessionStorage.setItem('wandernest_trip_toast_dismissed', 'true');
+    } catch (e) {}
+  };
 
   // Basecamp Hotel Anchor
   const [baseHotel, setBaseHotel] = useState(activeTrip?.hotel || null);
@@ -389,6 +401,11 @@ export default function ExploreDashboard({
   const [availableHotels, setAvailableHotels] = useState([]);
   const [loadingHotels, setLoadingHotels] = useState(false);
   const [hotelFilterTerm, setHotelFilterTerm] = useState('');
+
+  // Check whether active basecamp hotel is actually located in the currently viewed city
+  const isBasecampInCurrentCity = useMemo(() => {
+    return checkBasecampInCity(baseHotel, viewingLat, viewingLng, 60);
+  }, [baseHotel, viewingLat, viewingLng]);
 
   // Hotel Search with Preferences State
   const [prefHotelCity, setPrefHotelCity] = useState(viewingCity);
@@ -398,16 +415,11 @@ export default function ExploreDashboard({
   const [prefHotelsList, setPrefHotelsList] = useState([]);
   const [prefLoadingHotels, setPrefLoadingHotels] = useState(false);
 
-  // Flight Search State
-  const [flightOrigin, setFlightOrigin] = useState('New York (JFK)');
-  const [flightDest, setFlightDest] = useState(viewingCity);
-  const [flightDate, setFlightDate] = useState('');
-  const [flightClass, setFlightClass] = useState('Economy');
-
   // Popular destinations category filter
   const [selectedPopularCategory, setSelectedPopularCategory] = useState('all');
   const [showMoreCategories, setShowMoreCategories] = useState(false);
   const [popularSearchTerm, setPopularSearchTerm] = useState('');
+  const [showAllPopular, setShowAllPopular] = useState(false);
 
   // Fallback Destination Setup Flow Modal State
   const [setupModalOpen, setSetupModalOpen] = useState(false);
@@ -446,6 +458,19 @@ export default function ExploreDashboard({
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Auto-dismiss floating toast after 3 seconds when shown
+  useEffect(() => {
+    if (showStickyDock && !isStickyDismissed) {
+      const timer = setTimeout(() => {
+        setIsStickyDismissed(true);
+        try {
+          sessionStorage.setItem('wandernest_trip_toast_dismissed', 'true');
+        } catch (e) {}
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showStickyDock, isStickyDismissed]);
+
   // Sync when activeTrip changes
   useEffect(() => {
     if (activeTrip) {
@@ -461,10 +486,9 @@ export default function ExploreDashboard({
     }
   }, [activeTrip?.id, activeTrip?.destination]);
 
-  // Sync flight and hotel city inputs with viewing city
+  // Sync hotel city input with viewing city
   useEffect(() => {
     setPrefHotelCity(viewingCity);
-    setFlightDest(viewingCity);
   }, [viewingCity]);
 
   // Fetch Real Places in Viewing City
@@ -504,6 +528,35 @@ export default function ExploreDashboard({
       .catch(err => console.warn('Pref hotels fetch error:', err))
       .finally(() => setPrefLoadingHotels(false));
   }, [viewingLat, viewingLng]);
+
+  // Handle hotel city search directly
+  const handleSearchHotelsByCity = async (e) => {
+    if (e) e.preventDefault();
+    const city = (prefHotelCity || viewingCity).trim();
+    if (!city) return;
+    setPrefLoadingHotels(true);
+    try {
+      const searchRes = await searchDestinations(city);
+      if (searchRes.success && searchRes.data?.length > 0) {
+        const dest = searchRes.data[0];
+        const lat = parseFloat(dest.latitude || dest.lat) || viewingLat;
+        const lng = parseFloat(dest.longitude || dest.lng) || viewingLng;
+        const res = await fetchPlaces(lat, lng, 'stay', 15000);
+        if (res.success && res.data) {
+          setPrefHotelsList(res.data);
+        }
+      } else {
+        const res = await fetchPlaces(viewingLat, viewingLng, 'stay', 15000);
+        if (res.success && res.data) {
+          setPrefHotelsList(res.data);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed searching hotels for city:', err);
+    } finally {
+      setPrefLoadingHotels(false);
+    }
+  };
 
   // Load available hotels for Basecamp Modal when opened
   useEffect(() => {
@@ -545,24 +598,33 @@ export default function ExploreDashboard({
       .finally(() => setIsSearching(false));
   };
 
-  // Distinct Action 1: Explore Destination (Just view places & sights, no forced trip plan)
+  // Distinct Action 1: Explore Destination (Directly navigate to split-view Explorer)
   const handleExploreDestination = (destObj) => {
     setSearchResults([]);
     setSearchQuery('');
     setIsSearchDropdownOpen(false);
     setIsStickyDismissed(false);
 
-    setViewingDest({
+    const lat = parseFloat(destObj.latitude ?? destObj.lat);
+    const lng = parseFloat(destObj.longitude ?? destObj.lng);
+
+    const destinationPayload = {
       id: destObj.id || `dest_${Date.now()}`,
       name: destObj.name,
-      country: destObj.country || 'Global',
-      latitude: parseFloat(destObj.latitude || destObj.lat) || 35.6762,
-      longitude: parseFloat(destObj.longitude || destObj.lng) || 139.6503,
-      cover_image: destObj.cover_image || destObj.photo_url || null
-    });
+      country: destObj.country || destObj.displayName || 'Worldwide',
+      latitude: !isNaN(lat) ? lat : viewingLat,
+      longitude: !isNaN(lng) ? lng : viewingLng,
+      cover_image: destObj.cover_image || destObj.photo_url || null,
+      displayName: destObj.displayName || destObj.name
+    };
 
-    if (placesSectionRef.current) {
-      placesSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (onExplorePlace) {
+      onExplorePlace(destinationPayload);
+    } else {
+      setViewingDest(destinationPayload);
+      if (placesSectionRef.current) {
+        placesSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
   };
 
@@ -578,35 +640,40 @@ export default function ExploreDashboard({
     }
   };
 
-  // Search Form Submit: default to exploring sights
-  const handleSearchSubmit = (e) => {
+  // Search Form Submit: hitting Enter directly explores the destination
+  const handleSearchSubmit = async (e) => {
     if (e) e.preventDefault();
-    if (!searchQuery.trim()) return;
+    const query = searchQuery.trim();
+    if (!query) return;
 
     if (searchResults.length > 0) {
       handleExploreDestination(searchResults[0]);
-    } else {
-      searchDestinations(searchQuery.trim())
-        .then(res => {
-          if (res.success && res.data?.length > 0) {
-            handleExploreDestination(res.data[0]);
-          } else {
-            handleExploreDestination({
-              name: searchQuery.trim(),
-              country: 'Worldwide',
-              latitude: viewingLat,
-              longitude: viewingLng
-            });
-          }
-        })
-        .catch(() => {
-          handleExploreDestination({
-            name: searchQuery.trim(),
-            country: 'Worldwide',
-            latitude: viewingLat,
-            longitude: viewingLng
-          });
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const res = await searchDestinations(query);
+      if (res.success && res.data?.length > 0) {
+        handleExploreDestination(res.data[0]);
+      } else {
+        handleExploreDestination({
+          name: query,
+          country: 'Worldwide',
+          latitude: viewingLat,
+          longitude: viewingLng
         });
+      }
+    } catch (err) {
+      console.warn('Search submit error:', err);
+      handleExploreDestination({
+        name: query,
+        country: 'Worldwide',
+        latitude: viewingLat,
+        longitude: viewingLng
+      });
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -663,10 +730,14 @@ export default function ExploreDashboard({
   const handleSetBasecampHotel = (stay) => {
     const hotelObj = {
       name: stay.name,
+      city: stay.city || viewingCity.split(',')[0].trim(),
       address: stay.address || viewingCity,
       latitude: stay.latitude,
       longitude: stay.longitude,
-      photo_url: stay.photo_url
+      photo_url: stay.photo_url,
+      rating: stay.rating || null,
+      googleHotelsUrl: stay.googleHotelsUrl || stay.google_hotels_url,
+      googleMapsUrl: stay.googleMapsUrl || stay.google_maps_url
     };
     setBaseHotel(hotelObj);
     if (onUpdateTripHotel) onUpdateTripHotel(hotelObj);
@@ -689,32 +760,42 @@ export default function ExploreDashboard({
     const cat = (p.category || '').toLowerCase();
     const text = `${name} ${tag} ${cat}`;
 
+    const isHotel = cat === 'stay' || /hotel|resort|inn|lodging|hostel|suites|ryokan/i.test(tag) || /\b(hotel|resort|hostel|inn|suites|ryokan)\b/i.test(name);
+    const isFood = cat === 'eat' || /restaurant|dining|cafe|bakery|bistro|pub/i.test(tag);
+
     if (selectedSubCategory === 'historical') {
+      if (isHotel || isFood) return false;
       return text.includes('temple') || text.includes('shrine') || text.includes('monument') ||
              text.includes('historic') || text.includes('castle') || text.includes('ruins') ||
              text.includes('palace') || text.includes('cathedral') || text.includes('church');
     }
     if (selectedSubCategory === 'museum') {
-      return text.includes('museum') || text.includes('gallery') || text.includes('art') ||
+      if (isHotel || isFood) return false;
+      return text.includes('museum') || text.includes('gallery') || /\b(art|arts)\b/i.test(text) ||
              text.includes('exhibition');
     }
     if (selectedSubCategory === 'restaurant') {
+      if (isHotel) return false;
       return cat.includes('eat') && !text.includes('cafe') && !text.includes('bakery');
     }
     if (selectedSubCategory === 'cafe') {
+      if (isHotel) return false;
       return text.includes('cafe') || text.includes('coffee') || text.includes('bakery') ||
              text.includes('tea') || text.includes('roastery');
     }
     if (selectedSubCategory === 'nature') {
+      if (isHotel) return false;
       return text.includes('park') || text.includes('garden') || text.includes('nature') ||
              text.includes('mountain') || text.includes('forest') || text.includes('beach') ||
              text.includes('lake') || text.includes('river');
     }
     if (selectedSubCategory === 'shopping') {
+      if (isHotel) return false;
       return text.includes('market') || text.includes('shop') || text.includes('mall') ||
              text.includes('bazaar') || text.includes('store');
     }
     if (selectedSubCategory === 'nightlife') {
+      if (isHotel) return false;
       return text.includes('bar') || text.includes('pub') || text.includes('club') ||
              text.includes('night') || text.includes('lounge');
     }
@@ -723,7 +804,7 @@ export default function ExploreDashboard({
 
   const placesWithDistance = filteredPlaces.map(p => {
     let distanceKm = null;
-    if (baseHotel?.latitude && baseHotel?.longitude) {
+    if (isBasecampInCurrentCity && baseHotel?.latitude && baseHotel?.longitude) {
       distanceKm = calculateDistanceKm(
         baseHotel.latitude,
         baseHotel.longitude,
@@ -734,7 +815,7 @@ export default function ExploreDashboard({
     return { ...p, distanceKm };
   });
 
-  const displayedPlaces = sortByDistance && baseHotel
+  const displayedPlaces = sortByDistance && baseHotel && isBasecampInCurrentCity
     ? [...placesWithDistance].sort((a, b) => (a.distanceKm || 999) - (b.distanceKm || 999))
     : placesWithDistance;
 
@@ -747,53 +828,10 @@ export default function ExploreDashboard({
     return matchesCat && matchesSearch;
   });
 
-  // Carrier flights
-  const CARRIER_FLIGHTS = [
-    {
-      id: 'cf_1',
-      airline: 'All Nippon Airways (ANA)',
-      flightNo: 'NH 109',
-      depart: '11:15 AM',
-      arrive: '03:40 PM +1',
-      duration: '14h 25m',
-      type: 'Nonstop Direct',
-      cabin: flightClass,
-      amenities: ['Wi-Fi', 'Complimentary Hot Meal', '2 Checked Bags']
-    },
-    {
-      id: 'cf_2',
-      airline: 'Emirates',
-      flightNo: 'EK 318',
-      depart: '02:30 PM',
-      arrive: '06:45 PM +1',
-      duration: '15h 10m',
-      type: '1 Short Transfer',
-      cabin: flightClass,
-      amenities: ['Award-winning ICE', 'Gourmet Dining', 'Complimentary Drinks']
-    },
-    {
-      id: 'cf_3',
-      airline: 'Delta Air Lines',
-      flightNo: 'DL 295',
-      depart: '08:45 AM',
-      arrive: '04:15 PM +1',
-      duration: '16h 25m',
-      type: 'Nonstop Direct',
-      cabin: flightClass,
-      amenities: ['Seatback Streaming', 'USB Power Port', 'Snack Service']
-    },
-    {
-      id: 'cf_4',
-      airline: 'Singapore Airlines',
-      flightNo: 'SQ 025',
-      depart: '09:20 PM',
-      arrive: '06:30 AM +2',
-      duration: '17h 10m',
-      type: '1 Transfer',
-      cabin: flightClass,
-      amenities: ['World Class Service', 'Chef Crafted Menu', 'Lie-flat Eligible']
-    }
-  ];
+  const displayedPopularDestinations = showAllPopular
+    ? filteredPopularDestinations
+    : filteredPopularDestinations.slice(0, 6);
+
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-[#141413] animate-fade-in font-sans pb-32">
@@ -807,7 +845,7 @@ export default function ExploreDashboard({
           </div>
 
           {/* Heading */}
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-serif font-bold text-[#141413] tracking-tight leading-tight">
+          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold text-[#141413] tracking-tight leading-tight">
             Where to next, {currentUser?.displayName ? currentUser.displayName.split(' ')[0] : 'Traveler'}?
           </h1>
 
@@ -911,28 +949,7 @@ export default function ExploreDashboard({
                         <span className="px-2.5 py-0.5 rounded-md bg-[#FAF8F5] border border-borderSoft text-[11px] font-semibold text-mutedText group-hover:bg-white group-hover:border-[#C24B27]/30 group-hover:text-[#C24B27] transition-colors">
                           {item.typeLabel || 'City'}
                         </span>
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleExploreDestination(item);
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#FAF8F5] border border-borderSoft text-[11px] font-bold text-[#141413] transition-colors cursor-pointer"
-                        >
-                          Explore
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleStartPlanningAction(item);
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-[#C24B27] hover:bg-[#A83D1D] text-white text-[11px] font-bold transition-all shadow-xs cursor-pointer"
-                        >
-                          Plan Trip →
-                        </button>
+                        <ChevronRight className="w-4 h-4 text-mutedText group-hover:text-[#C24B27] transition-colors" />
                       </div>
                     </div>
                   ))}
@@ -1058,649 +1075,15 @@ export default function ExploreDashboard({
         </div>
       </section>
 
-      {/* 2. DESTINATION EXPLORATION HUB: THE EXPLORED PLACE AT THE FRONT */}
-      <section ref={placesSectionRef} className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 space-y-8">
-        {/* Destination Hero & Travel Guide Banner */}
-        <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-borderSoft shadow-xl">
-          <div className="relative h-64 sm:h-72 overflow-hidden">
-            <img
-              src={viewingDest.cover_image || 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1400&q=80'}
-              alt={viewingCity}
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/20" />
-
-            {/* Badges */}
-            <div className="absolute top-4 left-4 sm:top-6 sm:left-6 flex items-center gap-2">
-              <span className="px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-white text-[11px] font-bold tracking-wide uppercase border border-white/20">
-                ✨ City Guide & Travel Explorer
-              </span>
-              <span className="px-3 py-1 rounded-full bg-black/40 backdrop-blur-md text-white/90 text-[11px] font-semibold">
-                {viewingCountry}
-              </span>
-            </div>
-
-            {/* Destination Title & Prominent "Start planning" CTA */}
-            <div className="absolute bottom-4 left-4 right-4 sm:bottom-6 sm:left-6 sm:right-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4 text-white">
-              <div className="max-w-2xl space-y-1">
-                <h2 className="text-3xl sm:text-4xl lg:text-5xl font-serif font-bold text-white tracking-tight leading-tight">
-                  Explore {viewingCity}
-                </h2>
-                <p className="text-xs sm:text-sm text-white/80 line-clamp-2">
-                  {viewingDest.tagline || `Discover verified landmarks, cultural treasures, authentic dining, and basecamp accommodations in ${viewingCity}, ${viewingCountry}.`}
-                </p>
-              </div>
-
-              {/* Start Planning Option In Hero (Wanderlog Style) */}
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => handleStartPlanningAction(viewingDest)}
-                  className="px-5 py-3 rounded-full bg-[#C24B27] hover:bg-[#A83D1D] text-white text-xs sm:text-sm font-bold shadow-xl transition-all active:scale-95 flex items-center gap-2 cursor-pointer ring-2 ring-white/20 hover:ring-white/40"
-                >
-                  <Calendar className="w-4 h-4" />
-                  <span>Start planning a trip to {viewingCity}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* High-Level Destination Tabs */}
-        <div className="flex items-center justify-between border-b border-borderSoft pb-4 gap-4 flex-wrap">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {DESTINATION_EXPLORE_TABS.map(tab => {
-              const Icon = tab.icon;
-              const isCurrent = highLevelTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setHighLevelTab(tab.key)}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold transition-all shadow-2xs cursor-pointer ${
-                    isCurrent
-                      ? 'bg-[#141413] text-white shadow-xs'
-                      : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 ${isCurrent ? 'text-[#C24B27]' : 'text-mutedText'}`} />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => handleStartPlanningAction(viewingDest)}
-              className="px-4 py-2 rounded-xl bg-[#C24B27] hover:bg-[#A83D1D] text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Start planning</span>
-            </button>
-
-            <button
-              onClick={() => setRefreshKey(prev => prev + 1)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413] shadow-2xs transition-colors shrink-0 cursor-pointer"
-              title="Refresh authentic places"
-            >
-              <RotateCw className={`w-3.5 h-3.5 text-[#C24B27] ${loadingPlaces ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
-            </button>
-          </div>
-        </div>
-
-        {/* TAB CONTENT A: PLACES, SIGHTS & ATTRACTIONS (Shown when tab is 'all', 'do', or 'eat') */}
-        {(highLevelTab === 'all' || highLevelTab === 'do' || highLevelTab === 'eat') && (
-          <div className="space-y-6">
-            {/* Secondary Subcategory Filter Chips */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none flex-wrap">
-              {SUB_CATEGORIES.map(sub => {
-                const isSub = selectedSubCategory === sub.key;
-                return (
-                  <button
-                    key={sub.key}
-                    onClick={() => setSelectedSubCategory(sub.key)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                      isSub
-                        ? 'bg-[#C24B27]/15 text-[#C24B27] border border-[#C24B27]/40'
-                        : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
-                    }`}
-                  >
-                    {sub.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Basecamp Hotel Anchor Bar */}
-            <div className="p-4 sm:p-5 rounded-3xl bg-white border border-borderSoft shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${
-                  baseHotel 
-                    ? 'bg-amber-50 text-amber-600 border-amber-200' 
-                    : 'bg-[#FAF8F5] text-mutedText border-borderSoft'
-                }`}>
-                  <Bed className="w-6 h-6" />
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-mutedText block">
-                    Basecamp Hotel Anchor
-                  </span>
-                  <h3 className="font-serif font-bold text-sm sm:text-base text-[#141413]">
-                    {baseHotel ? baseHotel.name : `Where are you staying in ${viewingCity}?`}
-                  </h3>
-                  <p className="text-xs text-mutedText">
-                    {baseHotel 
-                      ? `${baseHotel.address} • All spot distances are measured from this hotel.` 
-                      : 'Select an available hotel in the destination to calculate exact walking distances.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                {baseHotel ? (
-                  <button
-                    onClick={() => setIsHotelModalOpen(true)}
-                    className="px-4 py-2 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-borderSoft text-xs font-semibold text-[#141413] transition-colors cursor-pointer"
-                  >
-                    Change Basecamp
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setIsHotelModalOpen(true)}
-                    className="px-4 py-2.5 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Select from Available Hotels</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Places Grid */}
-            {loadingPlaces ? (
-              <div className="py-20 text-center space-y-3">
-                <div className="w-8 h-8 border-2 border-[#C24B27] border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-xs text-mutedText">Retrieving verified authentic spots in {viewingCity}...</p>
-              </div>
-            ) : displayedPlaces.length === 0 ? (
-              <div className="py-16 text-center bg-white rounded-3xl border border-borderSoft p-8 shadow-xs">
-                <Compass className="w-10 h-10 text-mutedText mx-auto opacity-40 mb-2" />
-                <h3 className="font-serif font-bold text-base text-[#141413]">No places found for this category</h3>
-                <p className="text-xs text-mutedText mt-1">Try switching to "All Spots" to discover all verified attractions.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {displayedPlaces.map(place => {
-                  const saved = isSaved(place.id);
-                  const isCuratingThisCity = activeTrip && activeTrip.destination?.toLowerCase() === viewingCity.toLowerCase();
-
-                  return (
-                    <div
-                      key={place.id}
-                      className="group bg-white rounded-3xl overflow-hidden border border-borderSoft hover:border-[#C24B27]/40 shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
-                    >
-                      <div>
-                        {/* Place Photo */}
-                        <div className="relative h-52 overflow-hidden bg-[#FAF8F5]">
-                          <img
-                            src={place.photo_url || 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=800&q=80'}
-                            alt={place.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                            onError={(e) => {
-                              e.target.src = 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=800&q=80';
-                            }}
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-
-                          <div className="absolute top-3 left-3 flex items-center gap-1.5">
-                            <span className="px-2.5 py-1 rounded-lg bg-white/95 backdrop-blur-md text-[10px] font-bold text-[#141413] border border-white/40 shadow-xs">
-                              {place.tagLabel || (place.category === 'eat' ? 'Dining' : place.category === 'stay' ? 'Hotel' : 'Landmark')}
-                            </span>
-                          </div>
-
-                          {/* Bookmark Icon */}
-                          <button
-                            onClick={() => toggleSavePlace(place)}
-                            className={`absolute top-3 right-3 p-2 rounded-xl backdrop-blur-md transition-all shadow-xs cursor-pointer ${
-                              saved 
-                                ? 'bg-[#C24B27] text-white' 
-                                : 'bg-white/90 text-[#141413] hover:bg-white'
-                            }`}
-                            title={saved ? 'Remove from saved' : 'Save place'}
-                          >
-                            <Bookmark className={`w-3.5 h-3.5 ${saved ? 'fill-current' : ''}`} />
-                          </button>
-
-                          {/* Source Verification Badge & Rating */}
-                          <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-xs text-white">
-                            <span className="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[10px] font-semibold text-emerald-300">
-                              {place.provider === 'wikipedia' ? 'Wikipedia Verified' : 'OSM Verified'}
-                            </span>
-                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[11px] font-bold text-amber-400">
-                              <Star className="w-3 h-3 fill-amber-400" />
-                              <span>{place.rating || '4.8'}</span>
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Place Body */}
-                        <div className="p-5 space-y-2">
-                          <h3 className="font-serif font-bold text-base text-[#141413] truncate">
-                            {place.name}
-                          </h3>
-                          <p className="text-xs text-mutedText truncate flex items-center gap-1.5">
-                            <MapPin className="w-3.5 h-3.5 text-[#C24B27] shrink-0" />
-                            <span>{place.address || viewingCity}</span>
-                          </p>
-
-                          {/* Distance from Basecamp Hotel */}
-                          {place.distanceKm !== null && (
-                            <div className="flex items-center gap-1.5 mt-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/80 w-fit">
-                              <Footprints className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>{place.distanceKm} km from {baseHotel.name}</span>
-                              <span className="text-emerald-700/80 font-normal">
-                                (~{Math.round(place.distanceKm * 12)} min walk)
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Actions: Street View, Reviews & Start planning */}
-                      <div className="p-5 pt-0 space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => onOpenStreetView(place)}
-                            className="py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-borderSoft text-[11px] font-semibold text-[#141413] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                          >
-                            <Compass className="w-3.5 h-3.5 text-[#C24B27]" />
-                            <span>360° Street View</span>
-                          </button>
-
-                          <button
-                            onClick={() => onOpenReviews(place)}
-                            className="py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-borderSoft text-[11px] font-semibold text-[#141413] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                          >
-                            <Star className="w-3.5 h-3.5 text-amber-500" />
-                            <span>Reviews</span>
-                          </button>
-                        </div>
-
-                        {/* Start planning / Add to Plan button */}
-                        {isCuratingThisCity ? (
-                          <button
-                            onClick={() => onOpenWorkspace(place)}
-                            className="w-full py-2.5 px-3 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Add to Active Itinerary</span>
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleStartPlanningAction(viewingDest, place)}
-                            className="w-full py-2.5 px-3 rounded-xl bg-[#C24B27] hover:bg-[#A83D1D] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
-                          >
-                            <Calendar className="w-3.5 h-3.5" />
-                            <span>Start planning with this spot</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB CONTENT B: VERIFIED HOTELS & ACCOMMODATIONS (Shown when tab is 'stay' or 'all') */}
-        {(highLevelTab === 'all' || highLevelTab === 'stay') && (
-          <div className="pt-6 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-borderSoft pb-4">
-              <div>
-                <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#C24B27]">
-                  <Hotel className="w-3.5 h-3.5" />
-                  <span>Verified Hotel Booking & Accommodations</span>
-                </div>
-                <h3 className="text-2xl sm:text-3xl font-serif font-bold text-[#141413] mt-1">
-                  Search Real Stays in {viewingCity}
-                </h3>
-                <p className="text-xs sm:text-sm text-mutedText mt-1">
-                  Filter by dates, guests, and accommodation style to book verified lodgings directly.
-                </p>
-              </div>
-
-              <button
-                onClick={() => onNavigateView('stays')}
-                className="flex items-center gap-1 text-xs font-bold text-[#C24B27] hover:underline shrink-0 cursor-pointer"
-              >
-                <span>View All Stays & Basecamps</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Hotel Preferences Input Bar */}
-            <div className="p-5 rounded-3xl bg-white border border-borderSoft shadow-xs space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText mb-1">
-                    Destination City
-                  </label>
-                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413]">
-                    <MapPin className="w-4 h-4 text-[#C24B27] shrink-0" />
-                    <input
-                      type="text"
-                      value={prefHotelCity}
-                      onChange={(e) => setPrefHotelCity(e.target.value)}
-                      className="bg-transparent w-full focus:outline-none"
-                      placeholder="City name..."
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText mb-1">
-                    Check-in Date
-                  </label>
-                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413]">
-                    <Calendar className="w-4 h-4 text-[#C24B27] shrink-0" />
-                    <input
-                      type="date"
-                      min={new Date().toISOString().split('T')[0]}
-                      value={prefCheckIn}
-                      onChange={(e) => {
-                        setPrefCheckIn(e.target.value);
-                        if (e.target.value && !prefCheckOut) {
-                          setPrefCheckOut(addDaysToDate(e.target.value, 4));
-                        }
-                      }}
-                      className="bg-transparent w-full focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText mb-1">
-                    Check-out Date
-                  </label>
-                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413]">
-                    <Calendar className="w-4 h-4 text-[#C24B27] shrink-0" />
-                    <input
-                      type="date"
-                      min={prefCheckIn || new Date().toISOString().split('T')[0]}
-                      value={prefCheckOut}
-                      onChange={(e) => setPrefCheckOut(e.target.value)}
-                      className="bg-transparent w-full focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText mb-1">
-                    Guests & Room
-                  </label>
-                  <select
-                    value={prefGuests}
-                    onChange={(e) => setPrefGuests(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413] focus:outline-none cursor-pointer"
-                  >
-                    <option value="1 Guest, 1 Room">1 Guest, 1 Room</option>
-                    <option value="2 Guests, 1 Room">2 Guests, 1 Room</option>
-                    <option value="2 Guests, 2 Rooms">2 Guests, 2 Rooms</option>
-                    <option value="Family / 3+ Guests">Family / 3+ Guests</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Real Hotels Grid */}
-            {prefLoadingHotels ? (
-              <div className="py-12 text-center space-y-2">
-                <div className="w-7 h-7 border-2 border-[#C24B27] border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-xs text-mutedText">Loading authentic hotels in {viewingCity}...</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {prefHotelsList.slice(0, 6).map(hotel => {
-                  const isBasecamp = baseHotel?.name === hotel.name;
-                  const gHotelsUrl = `https://www.google.com/travel/hotels?q=${encodeURIComponent(hotel.name + ' ' + (hotel.address || viewingCity))}${prefCheckIn ? `&dates=${prefCheckIn}` : ''}${prefCheckOut ? `&dates=${prefCheckOut}` : ''}`;
-                  const bookingUrl = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(hotel.name + ' ' + viewingCity)}`;
-
-                  return (
-                    <div
-                      key={hotel.id}
-                      className={`bg-white rounded-3xl overflow-hidden border shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col justify-between ${
-                        isBasecamp ? 'border-amber-400 ring-2 ring-amber-400/30' : 'border-borderSoft hover:border-[#C24B27]/40'
-                      }`}
-                    >
-                      <div>
-                        <div className="relative h-48 overflow-hidden bg-[#FAF8F5]">
-                          <img src={hotel.photo_url} alt={hotel.name} className="w-full h-full object-cover" />
-                          {isBasecamp && (
-                            <span className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-amber-500 text-white text-[10px] font-bold shadow-xs">
-                              Active Basecamp
-                            </span>
-                          )}
-                          <div className="absolute bottom-3 right-3 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[11px] font-bold text-amber-400 flex items-center gap-1">
-                            <Star className="w-3 h-3 fill-amber-400" />
-                            <span>{hotel.rating || '4.8'}</span>
-                          </div>
-                        </div>
-
-                        <div className="p-5 space-y-1">
-                          <h4 className="font-serif font-bold text-base text-[#141413] truncate">{hotel.name}</h4>
-                          <p className="text-xs text-mutedText truncate">{hotel.address || viewingCity}</p>
-                        </div>
-                      </div>
-
-                      <div className="p-5 pt-0 space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <a
-                            href={gHotelsUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="py-2 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
-                            <span>Google Hotels</span>
-                          </a>
-
-                          <a
-                            href={bookingUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Booking.com</span>
-                          </a>
-                        </div>
-
-                        <button
-                          onClick={() => handleSetBasecampHotel(hotel)}
-                          className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer ${
-                            isBasecamp
-                              ? 'bg-amber-500 text-white'
-                              : 'bg-[#141413] hover:bg-[#C24B27] text-white'
-                          }`}
-                        >
-                          <Bed className="w-3.5 h-3.5" />
-                          <span>{isBasecamp ? '✓ Current Basecamp Anchor' : 'Set as Basecamp Hotel'}</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB CONTENT C: FLIGHT SCHEDULES (Shown when tab is 'flight' or 'all') */}
-        {(highLevelTab === 'all' || highLevelTab === 'flight') && (
-          <div className="pt-6 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-borderSoft pb-4">
-              <div>
-                <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#C24B27]">
-                  <Plane className="w-3.5 h-3.5" />
-                  <span>Real Commercial Flight Schedules</span>
-                </div>
-                <h3 className="text-2xl sm:text-3xl font-serif font-bold text-[#141413] mt-1">
-                  Flight Routes to {viewingCity}
-                </h3>
-                <p className="text-xs sm:text-sm text-mutedText mt-1">
-                  Authentic airline routes, flight durations, and instant direct links to Google Flights.
-                </p>
-              </div>
-
-              <button
-                onClick={() => onNavigateView('flights')}
-                className="flex items-center gap-1 text-xs font-bold text-[#C24B27] hover:underline shrink-0 cursor-pointer"
-              >
-                <span>Open Flights Hub</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Flight Search Parameters */}
-            <div className="p-5 rounded-3xl bg-white border border-borderSoft shadow-xs space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText mb-1">
-                    Departure City
-                  </label>
-                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413]">
-                    <MapPin className="w-4 h-4 text-[#C24B27] shrink-0" />
-                    <input
-                      type="text"
-                      value={flightOrigin}
-                      onChange={(e) => setFlightOrigin(e.target.value)}
-                      className="bg-transparent w-full focus:outline-none"
-                      placeholder="e.g. New York, London..."
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText mb-1">
-                    Destination City
-                  </label>
-                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413]">
-                    <MapPin className="w-4 h-4 text-[#C24B27] shrink-0" />
-                    <input
-                      type="text"
-                      value={flightDest}
-                      onChange={(e) => setFlightDest(e.target.value)}
-                      className="bg-transparent w-full focus:outline-none"
-                      placeholder="Destination..."
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText mb-1">
-                    Departure Date
-                  </label>
-                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413]">
-                    <Calendar className="w-4 h-4 text-[#C24B27] shrink-0" />
-                    <input
-                      type="date"
-                      min={new Date().toISOString().split('T')[0]}
-                      value={flightDate}
-                      onChange={(e) => setFlightDate(e.target.value)}
-                      className="bg-transparent w-full focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText mb-1">
-                    Cabin Class
-                  </label>
-                  <select
-                    value={flightClass}
-                    onChange={(e) => setFlightClass(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413] focus:outline-none cursor-pointer"
-                  >
-                    <option value="Economy">Economy Class</option>
-                    <option value="Premium Economy">Premium Economy</option>
-                    <option value="Business">Business Class</option>
-                    <option value="First">First Class</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Flight Cards Feed */}
-            <div className="space-y-3">
-              {CARRIER_FLIGHTS.map(fl => {
-                const gFlightsUrl = `https://www.google.com/travel/flights?q=flights+from+${encodeURIComponent(flightOrigin)}+to+${encodeURIComponent(flightDest)}`;
-                return (
-                  <div
-                    key={fl.id}
-                    className="p-5 rounded-3xl bg-white border border-borderSoft shadow-xs hover:shadow-md transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-[#FAF8F5] border border-borderSoft flex items-center justify-center shrink-0 text-[#C24B27]">
-                        <Plane className="w-6 h-6" />
-                      </div>
-
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-base text-[#141413]">{fl.airline}</span>
-                          <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md bg-[#FAF8F5] text-mutedText border border-borderSoft">
-                            {fl.flightNo}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-4 text-xs text-mutedText mt-1">
-                          <span className="font-bold text-[#141413]">{fl.depart}</span>
-                          <div className="flex items-center gap-1.5 text-mutedText">
-                            <span className="w-6 border-t border-borderSoft" />
-                            <span className="text-[10px] font-medium">{fl.duration} • {fl.type}</span>
-                            <span className="w-6 border-t border-borderSoft" />
-                          </div>
-                          <span className="font-bold text-[#141413]">{fl.arrive}</span>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2 mt-2">
-                          {fl.amenities.map((am, i) => (
-                            <span key={i} className="px-2 py-0.5 rounded-md bg-[#FAF8F5] border border-borderSoft text-[10px] font-medium text-mutedText">
-                              ✓ {am}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-end">
-                      <a
-                        href={gFlightsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-5 py-2.5 rounded-full bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 active:scale-95"
-                      >
-                        <span>Search on Google Flights</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* 3. POPULAR WORLDWIDE DESTINATIONS: BROWSE OTHER HUBS */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-18 space-y-6">
+      {/* 3. POPULAR WORLDWIDE DESTINATIONS & FILTERS */}
+      <section id="popular-destinations-section" className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-borderSoft pb-4">
           <div>
-            <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#C24B27]">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C24B27]/10 text-[11px] font-bold uppercase tracking-wider text-[#C24B27] mb-2">
               <Globe className="w-3.5 h-3.5" />
               <span>Worldwide Travel Hubs</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-serif font-bold text-[#141413] mt-1">
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-serif font-bold text-[#141413]">
               Explore Popular Destinations
             </h2>
             <p className="text-xs sm:text-sm text-mutedText mt-1">
@@ -1831,9 +1214,9 @@ export default function ExploreDashboard({
           )}
         </div>
 
-        {/* Popular Destinations Cards Grid */}
+        {/* Popular Destinations Cards Grid (6 by default or all when expanded) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
-          {filteredPopularDestinations.map(dest => (
+          {displayedPopularDestinations.map(dest => (
             <div
               key={dest.id}
               className="group bg-white rounded-3xl overflow-hidden border border-borderSoft hover:border-[#C24B27]/50 shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col justify-between hover:-translate-y-1"
@@ -1893,11 +1276,544 @@ export default function ExploreDashboard({
             </div>
           ))}
         </div>
+
+        {/* View More / Show Fewer Button */}
+        {filteredPopularDestinations.length > 6 && (
+          <div className="flex justify-center pt-4">
+            <button
+              onClick={() => setShowAllPopular(prev => !prev)}
+              className="px-6 py-3 rounded-full bg-white hover:bg-[#FAF8F5] border border-borderSoft text-xs font-bold text-[#141413] hover:text-[#C24B27] hover:border-[#C24B27]/40 shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <span>
+                {showAllPopular
+                  ? '− Show Fewer Destinations'
+                  : `+ View More Destinations (${filteredPopularDestinations.length - 6} more)`}
+              </span>
+              <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${showAllPopular ? '-rotate-90' : 'rotate-90'}`} />
+            </button>
+          </div>
+        )}
       </section>
 
-      {/* 4. PERSISTENT FLOATING DOCK: "START PLANNING" OPTION WHILE LOOKING AROUND */}
+      {/* 5. DESTINATION EXPLORATION HUB: Sights, Culture & Attractions in Viewing City */}
+      <section ref={placesSectionRef} className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 space-y-8">
+        {/* Destination Hero & Travel Guide Banner */}
+        <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-borderSoft shadow-xl">
+          <div className="relative h-64 sm:h-72 overflow-hidden">
+            <img
+              src={viewingDest.cover_image || 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1400&q=80'}
+              alt={viewingCity}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/20" />
+
+            {/* Badges */}
+            <div className="absolute top-4 left-4 sm:top-6 sm:left-6 flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-white text-[11px] font-bold tracking-wide uppercase border border-white/20">
+                ✨ City Guide & Travel Explorer
+              </span>
+              <span className="px-3 py-1 rounded-full bg-black/40 backdrop-blur-md text-white/90 text-[11px] font-semibold">
+                {viewingCountry}
+              </span>
+            </div>
+
+            {/* Destination Title & Prominent "Start planning" CTA */}
+            <div className="absolute bottom-4 left-4 right-4 sm:bottom-6 sm:left-6 sm:right-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4 text-white">
+              <div className="max-w-2xl space-y-1">
+                <h2 className="text-3xl sm:text-4xl lg:text-5xl font-serif font-bold text-white tracking-tight leading-tight">
+                  Explore {viewingCity}
+                </h2>
+                <p className="text-xs sm:text-sm text-white/80 line-clamp-2">
+                  {viewingDest.tagline || `Discover verified landmarks, cultural treasures, and authentic dining in ${viewingCity}, ${viewingCountry}.`}
+                </p>
+              </div>
+
+              {/* Start Planning Option In Hero */}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => handleStartPlanningAction(viewingDest)}
+                  className="px-5 py-3 rounded-full bg-[#C24B27] hover:bg-[#A83D1D] text-white text-xs sm:text-sm font-bold shadow-xl transition-all active:scale-95 flex items-center gap-2 cursor-pointer ring-2 ring-white/20 hover:ring-white/40"
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Start planning a trip to {viewingCity}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Top Rated Stays in Featured City */}
+        <div id="explore-stays-section" className="space-y-6 pt-2">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-borderSoft pb-4">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C24B27]/10 text-[11px] font-bold uppercase tracking-wider text-[#C24B27] mb-2">
+                <Hotel className="w-3.5 h-3.5" />
+                <span>Hotels & Accommodations</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-serif font-bold text-[#141413]">
+                Top Rated Stays in {prefHotelCity || viewingCity}
+              </h2>
+              <p className="text-xs sm:text-sm text-mutedText mt-1 max-w-2xl">
+                Verified top-rated hotels with authentic Google Business ratings, guest reviews, and direct links to check live availability.
+              </p>
+            </div>
+          </div>
+
+          {/* Hotel Search Preferences Form */}
+          <form onSubmit={handleSearchHotelsByCity} className="p-5 rounded-3xl bg-white border border-borderSoft shadow-xs space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText mb-1">
+                  Destination City
+                </label>
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413] focus-within:border-[#C24B27]">
+                  <MapPin className="w-4 h-4 text-[#C24B27] shrink-0" />
+                  <input
+                    type="text"
+                    value={prefHotelCity}
+                    onChange={(e) => setPrefHotelCity(e.target.value)}
+                    className="bg-transparent w-full focus:outline-none"
+                    placeholder="e.g. Kyoto, Tokyo, Paris..."
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText mb-1">
+                  Check-in Date
+                </label>
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413]">
+                  <Calendar className="w-4 h-4 text-[#C24B27] shrink-0" />
+                  <input
+                    type="date"
+                    min={new Date().toISOString().split('T')[0]}
+                    value={prefCheckIn}
+                    onChange={(e) => {
+                      setPrefCheckIn(e.target.value);
+                      if (e.target.value && !prefCheckOut) {
+                        setPrefCheckOut(addDaysToDate(e.target.value, 4));
+                      }
+                    }}
+                    className="bg-transparent w-full focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText mb-1">
+                  Check-out Date
+                </label>
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413]">
+                  <Calendar className="w-4 h-4 text-[#C24B27] shrink-0" />
+                  <input
+                    type="date"
+                    min={prefCheckIn || new Date().toISOString().split('T')[0]}
+                    value={prefCheckOut}
+                    onChange={(e) => setPrefCheckOut(e.target.value)}
+                    className="bg-transparent w-full focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText mb-1">
+                  Guests & Room
+                </label>
+                <select
+                  value={prefGuests}
+                  onChange={(e) => setPrefGuests(e.target.value)}
+                  className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413] focus:outline-none cursor-pointer"
+                >
+                  <option value="1 Guest, 1 Room">1 Guest, 1 Room</option>
+                  <option value="2 Guests, 1 Room">2 Guests, 1 Room</option>
+                  <option value="2 Guests, 2 Rooms">2 Guests, 2 Rooms</option>
+                  <option value="Family / 3+ Guests">Family / 3+ Guests</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+              <span className="text-[11px] text-mutedText">
+                Real hotels curated from Google Business profiles & verified hospitality databases.
+              </span>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="submit"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Search Hotels</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigateView && onNavigateView('stays', {
+                    destination: prefHotelCity || viewingCity,
+                    latitude: viewingLat,
+                    longitude: viewingLng,
+                    checkIn: prefCheckIn,
+                    checkOut: prefCheckOut,
+                    guests: prefGuests
+                  })}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-borderSoft text-xs font-bold text-[#141413] transition-all cursor-pointer"
+                >
+                  <span>Explore Stays</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-[#C24B27]" />
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {/* Hotels Grid */}
+          {prefLoadingHotels ? (
+            <div className="py-12 text-center space-y-2">
+              <div className="w-7 h-7 border-2 border-[#C24B27] border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-xs text-mutedText font-semibold">Loading top rated hotels...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {prefHotelsList.slice(0, 6).map(hotel => {
+                const isBasecamp = isBasecampInCurrentCity && baseHotel?.name === hotel.name;
+                const { hotelsUrl: gHotelsUrl, mapsUrl: gMapsUrl } = buildHotelUrls(hotel, viewingCity, prefCheckIn, prefCheckOut);
+                const bookingUrl = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(hotel.name + ' ' + (hotel.city || viewingCity))}`;
+
+                return (
+                  <div
+                    key={hotel.id}
+                    className={`bg-white rounded-3xl overflow-hidden border shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col justify-between ${
+                      isBasecamp ? 'border-amber-400 ring-2 ring-amber-400/30' : 'border-borderSoft hover:border-[#C24B27]/40'
+                    }`}
+                  >
+                    <div>
+                      <div className="relative h-48 overflow-hidden bg-[#FAF8F5]">
+                        <img src={hotel.photo_url} alt={hotel.name} className="w-full h-full object-cover" />
+                        {isBasecamp && (
+                          <span className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-amber-500 text-white text-[10px] font-bold shadow-xs">
+                            Active Basecamp
+                          </span>
+                        )}
+                        {hotel.rating && (
+                          <div className="absolute bottom-3 right-3 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[11px] font-bold text-amber-400 flex items-center gap-1">
+                            <Star className="w-3 h-3 fill-amber-400" />
+                            <span>{hotel.rating}</span>
+                            {hotel.reviews_count && (
+                              <span className="text-[10px] text-white/80 font-normal">({hotel.reviews_count.toLocaleString()})</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="p-5 space-y-1.5">
+                        <h4 className="font-serif font-bold text-base text-[#141413] truncate">{hotel.name}</h4>
+                        <p className="text-xs text-mutedText truncate flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-[#C24B27] shrink-0" />
+                          <span>{hotel.address || viewingCity}</span>
+                        </p>
+                        {hotel.amenities && hotel.amenities.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pt-1">
+                            {hotel.amenities.slice(0, 3).map((am, i) => (
+                              <span key={i} className="px-2 py-0.5 rounded-md bg-[#FAF8F5] border border-borderSoft text-[10px] font-medium text-mutedText">
+                                {am}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-5 pt-0 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <a
+                          href={gHotelsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="py-2 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                          title="Check live rates & availability on Google Hotels"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Google Hotels</span>
+                        </a>
+
+                        <a
+                          href={gMapsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#EBE7DF] border border-borderSoft text-xs font-semibold text-[#141413] flex items-center justify-center gap-1.5 transition-colors"
+                          title="View Google Business Profile & guest reviews"
+                        >
+                          <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Google Profile</span>
+                        </a>
+                      </div>
+
+                      <button
+                        onClick={() => handleSetBasecampHotel(hotel)}
+                        className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+                          isBasecamp
+                            ? 'bg-amber-500 text-white'
+                            : 'bg-[#141413] hover:bg-[#C24B27] text-white'
+                        }`}
+                      >
+                        <Bed className="w-3.5 h-3.5" />
+                        <span>{isBasecamp ? '✓ Current Basecamp Anchor' : 'Set as Basecamp Hotel'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* High-Level Destination Tabs */}
+        <div className="flex items-center justify-between border-b border-borderSoft pb-4 gap-4 flex-wrap">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {DESTINATION_EXPLORE_TABS.map(tab => {
+              const Icon = tab.icon;
+              const isCurrent = highLevelTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setHighLevelTab(tab.key)}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                    isCurrent
+                      ? 'bg-[#141413] text-white shadow-xs'
+                      : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${isCurrent ? 'text-[#C24B27]' : 'text-mutedText'}`} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setRefreshKey(prev => prev + 1)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-[#FAF8F5] border border-borderSoft text-xs font-semibold text-[#141413] shadow-2xs transition-colors shrink-0 cursor-pointer"
+              title="Refresh authentic places"
+            >
+              <RotateCw className={`w-3.5 h-3.5 text-[#C24B27] ${loadingPlaces ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+
+        {/* PLACES, SIGHTS & ATTRACTIONS */}
+        <div className="space-y-6">
+          {/* Secondary Subcategory Filter Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none flex-wrap">
+            {SUB_CATEGORIES.map(sub => {
+              const isSub = selectedSubCategory === sub.key;
+              return (
+                <button
+                  key={sub.key}
+                  onClick={() => setSelectedSubCategory(sub.key)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isSub
+                      ? 'bg-[#C24B27]/15 text-[#C24B27] border border-[#C24B27]/40'
+                      : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
+                  }`}
+                >
+                  {sub.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Basecamp Hotel Anchor Bar */}
+          <div className="p-4 sm:p-5 rounded-3xl bg-white border border-borderSoft shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${
+                baseHotel && isBasecampInCurrentCity
+                  ? 'bg-amber-50 text-amber-600 border-amber-200' 
+                  : 'bg-[#FAF8F5] text-mutedText border-borderSoft'
+              }`}>
+                <Bed className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-mutedText block">
+                  Basecamp Hotel Anchor
+                </span>
+                <h3 className="font-serif font-bold text-sm sm:text-base text-[#141413]">
+                  {baseHotel && isBasecampInCurrentCity
+                    ? baseHotel.name
+                    : baseHotel && !isBasecampInCurrentCity
+                    ? `Active Trip Basecamp: ${baseHotel.name}`
+                    : `Where are you staying in ${viewingCity}?`}
+                </h3>
+                <p className="text-xs text-mutedText">
+                  {baseHotel && isBasecampInCurrentCity
+                    ? `${baseHotel.address || viewingCity} • All spot distances are measured from this hotel.`
+                    : baseHotel && !isBasecampInCurrentCity
+                    ? `Anchored to ${baseHotel.city || activeTrip?.destination || 'other trip'}. Select a local hotel in ${viewingCity} to calculate accurate walking and transit distances.`
+                    : 'Select an available hotel in the destination to calculate exact walking distances.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {baseHotel && isBasecampInCurrentCity ? (
+                <button
+                  onClick={() => setIsHotelModalOpen(true)}
+                  className="px-4 py-2 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-borderSoft text-xs font-semibold text-[#141413] transition-colors cursor-pointer"
+                >
+                  Change Basecamp
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsHotelModalOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{baseHotel ? `Set Basecamp for ${viewingCity}` : 'Select from Available Hotels'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Places Grid */}
+          {loadingPlaces ? (
+            <div className="py-20 text-center space-y-3">
+              <div className="w-8 h-8 border-2 border-[#C24B27] border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-xs text-mutedText">Retrieving verified authentic spots in {viewingCity}...</p>
+            </div>
+          ) : displayedPlaces.length === 0 ? (
+            <div className="py-16 text-center bg-white rounded-3xl border border-borderSoft p-8 shadow-xs">
+              <Compass className="w-10 h-10 text-mutedText mx-auto opacity-40 mb-2" />
+              <h3 className="font-serif font-bold text-base text-[#141413]">No places found for this category</h3>
+              <p className="text-xs text-mutedText mt-1">Try switching to "All Spots" to discover all verified attractions.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {displayedPlaces.map(place => {
+                const saved = isSaved(place.id);
+                const isCuratingThisCity = activeTrip && activeTrip.destination?.toLowerCase() === viewingCity.toLowerCase();
+
+                return (
+                  <div
+                    key={place.id}
+                    className="group bg-white rounded-3xl overflow-hidden border border-borderSoft hover:border-[#C24B27]/40 shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
+                  >
+                    <div>
+                      {/* Place Photo */}
+                      <div className="relative h-52 overflow-hidden bg-[#FAF8F5]">
+                        <img
+                          src={place.photo_url || 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=800&q=80'}
+                          alt={place.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          onError={(e) => {
+                            e.target.src = 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=800&q=80';
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+
+                        <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                          <span className="px-2.5 py-1 rounded-lg bg-white/95 backdrop-blur-md text-[10px] font-bold text-[#141413] border border-white/40 shadow-xs">
+                            {place.tagLabel || (place.category === 'eat' ? 'Dining' : place.category === 'stay' ? 'Hotel' : 'Landmark')}
+                          </span>
+                        </div>
+
+                        {/* Bookmark Icon */}
+                        <button
+                          onClick={() => toggleSavePlace(place)}
+                          className={`absolute top-3 right-3 p-2 rounded-xl backdrop-blur-md transition-all shadow-xs cursor-pointer ${
+                            saved 
+                              ? 'bg-[#C24B27] text-white' 
+                              : 'bg-white/90 text-[#141413] hover:bg-white'
+                          }`}
+                          title={saved ? 'Remove from saved' : 'Save place'}
+                        >
+                          <Bookmark className={`w-3.5 h-3.5 ${saved ? 'fill-current' : ''}`} />
+                        </button>
+
+                        {/* Source Verification Badge & Rating */}
+                        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-xs text-white">
+                          <span className="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[10px] font-semibold text-emerald-300">
+                            {place.provider === 'wikipedia' ? 'Wikipedia Verified' : 'OSM Verified'}
+                          </span>
+                          {place.rating && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[11px] font-bold text-amber-400">
+                              <Star className="w-3 h-3 fill-amber-400" />
+                              <span>{place.rating}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Place Body */}
+                      <div className="p-5 space-y-2">
+                        <h3 className="font-serif font-bold text-base text-[#141413] truncate">
+                          {place.name}
+                        </h3>
+                        <p className="text-xs text-mutedText truncate flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-[#C24B27] shrink-0" />
+                          <span>{place.address || viewingCity}</span>
+                        </p>
+
+                        {/* Distance from Basecamp Hotel */}
+                        {place.distanceKm !== null && (
+                          <div className="flex items-center gap-1.5 mt-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/80 w-fit">
+                            <Footprints className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>{place.distanceKm} km from {baseHotel.name}</span>
+                            <span className="text-emerald-700/80 font-normal">
+                              (~{Math.round(place.distanceKm * 12)} min walk)
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions: Street View, Reviews & Start planning */}
+                    <div className="p-5 pt-0 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => onOpenStreetView(place)}
+                          className="py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-borderSoft text-[11px] font-semibold text-[#141413] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Compass className="w-3.5 h-3.5 text-[#C24B27]" />
+                          <span>360° Street View</span>
+                        </button>
+
+                        <button
+                          onClick={() => onOpenReviews(place)}
+                          className="py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-borderSoft text-[11px] font-semibold text-[#141413] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Star className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Reviews</span>
+                        </button>
+                      </div>
+
+                      {/* Start planning / Add to Plan button */}
+                      {isCuratingThisCity ? (
+                        <button
+                          onClick={() => onOpenWorkspace(place)}
+                          className="w-full py-2.5 px-3 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add to Active Itinerary</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleStartPlanningAction(viewingDest, place)}
+                          className="w-full py-2.5 px-3 rounded-xl bg-[#C24B27] hover:bg-[#A83D1D] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                        >
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>Start planning with this spot</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 4. PERSISTENT FLOATING DOCK: BOTTOM-RIGHT WITH AUTO-DISMISS & SESSION PERSISTENCE */}
       {showStickyDock && !isStickyDismissed && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[94%] max-w-xl bg-[#141413]/95 backdrop-blur-md text-white rounded-full p-2 pl-3.5 pr-2.5 shadow-2xl border border-white/15 flex items-center justify-between gap-3 animate-slide-up">
+        <div className="fixed bottom-6 right-4 sm:right-6 z-40 max-w-lg w-[calc(100%-2rem)] sm:w-auto bg-[#141413]/95 backdrop-blur-md text-white rounded-full p-2 pl-3.5 pr-2.5 shadow-2xl border border-white/15 flex items-center justify-between gap-3 animate-slide-up">
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-white/20 bg-[#2B2B28]">
               <img
@@ -1926,7 +1842,7 @@ export default function ExploreDashboard({
             </button>
 
             <button
-              onClick={() => setIsStickyDismissed(true)}
+              onClick={handleDismissStickyDock}
               className="p-1.5 rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
               title="Dismiss"
             >
@@ -1998,19 +1914,22 @@ export default function ExploreDashboard({
                           <div className="truncate">
                             <h4 className="font-bold text-xs text-[#141413] truncate">{hotel.name}</h4>
                             <p className="text-[11px] text-mutedText truncate">{hotel.address || viewingCity}</p>
-                            <span className="flex items-center gap-1 text-[10px] text-amber-600 font-bold mt-0.5">
-                              <Star className="w-3 h-3 fill-amber-400" />
-                              <span>{hotel.rating || '4.8'}</span>
-                            </span>
+                            {hotel.rating && (
+                              <span className="flex items-center gap-1 text-[10px] text-amber-600 font-bold mt-0.5">
+                                <Star className="w-3 h-3 fill-amber-400" />
+                                <span>{hotel.rating}</span>
+                              </span>
+                            )}
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
                           <a
-                            href={`https://www.google.com/travel/hotels?q=${encodeURIComponent(hotel.name + ' ' + (hotel.address || viewingCity))}`}
+                            href={buildHotelUrls(hotel, viewingCity).hotelsUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-800 text-[10px] font-bold border border-blue-200 hover:bg-blue-100 flex items-center gap-1"
+                            title="Check live rates & availability on Google Hotels"
                           >
                             <ExternalLink className="w-3 h-3 text-blue-600" />
                             <span>Book</span>

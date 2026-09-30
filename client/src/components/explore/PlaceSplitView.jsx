@@ -6,9 +6,8 @@ import {
   DollarSign, ShieldCheck, TrendingUp, Info
 } from 'lucide-react';
 import WanderMap from '../map/WanderMap';
-import { fetchPlaces } from '../../api';
+import { fetchPlaces, searchDestinations } from '../../api';
 import { useCurrency } from '../../context/CurrencyContext';
-import { calculateTripBudget } from '../../services/budgetService';
 
 export default function PlaceSplitView({
   place,
@@ -23,15 +22,45 @@ export default function PlaceSplitView({
   const [activeCategory, setActiveCategory] = useState('all');
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(10);
 
   const placeName = place?.name || 'Selected Place';
-  const placeCountry = place?.country || 'Worldwide';
-  const latitude = parseFloat(place?.latitude || place?.lat) || 35.6762;
-  const longitude = parseFloat(place?.longitude || place?.lng) || 139.6503;
-  const coverImage = place?.cover_image || place?.photo_url || 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80';
+  const placeCountry = place?.country || place?.displayName || 'Worldwide';
+  const directLat = parseFloat(place?.latitude ?? place?.lat);
+  const directLng = parseFloat(place?.longitude ?? place?.lng);
+  const initialLat = !isNaN(directLat) ? directLat : 40.7128;
+  const initialLng = !isNaN(directLng) ? directLng : -74.0060;
 
-  // Calculate real budget benchmark for this destination
-  const budgetEstimate = calculateTripBudget(placeName, 5, 'standard', 1, false);
+  const [coords, setCoords] = useState({
+    latitude: initialLat,
+    longitude: initialLng
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    const l1 = parseFloat(place?.latitude ?? place?.lat);
+    const l2 = parseFloat(place?.longitude ?? place?.lng);
+    if (!isNaN(l1) && !isNaN(l2)) {
+      setCoords({ latitude: l1, longitude: l2 });
+    } else if (place?.name) {
+      searchDestinations(place.name)
+        .then(res => {
+          if (isMounted && res.success && res.data?.length > 0) {
+            const found = res.data[0];
+            const pLat = parseFloat(found.latitude ?? found.lat);
+            const pLng = parseFloat(found.longitude ?? found.lng);
+            if (!isNaN(pLat) && !isNaN(pLng)) {
+              setCoords({ latitude: pLat, longitude: pLng });
+            }
+          }
+        })
+        .catch(err => console.warn('PlaceSplitView geocoding error:', err));
+    }
+  }, [place?.name, place?.latitude, place?.lat, place?.longitude, place?.lng]);
+
+  const latitude = !isNaN(directLat) ? directLat : coords.latitude;
+  const longitude = !isNaN(directLng) ? directLng : coords.longitude;
+  const coverImage = place?.cover_image || place?.photo_url || 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80';
 
   // Fetch verified sights and places for this destination
   useEffect(() => {
@@ -68,6 +97,13 @@ export default function PlaceSplitView({
     if (activeCategory === 'stay') return p.category === 'stay';
     return true;
   });
+
+  // Reset pagination when category or coordinates change
+  useEffect(() => {
+    setVisibleCount(10);
+  }, [latitude, longitude, activeCategory]);
+
+  const displayedPlaces = filteredPlaces.slice(0, visibleCount);
 
   const handleSelectPlaceOnMap = (item) => {
     setSelectedPlaceId(item.id);
@@ -159,61 +195,7 @@ export default function PlaceSplitView({
             >
               <Calendar className="w-4 h-4" />
               <span>Start Planning Itinerary</span>
-              <ArrowRight className="w-4 h-4" />
             </button>
-          </div>
-
-          {/* REAL TRAVEL BUDGET INFORMATION CARD */}
-          <div className="bg-white rounded-2xl p-4 border border-borderSoft shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                  <DollarSign className="w-3.5 h-3.5" />
-                </span>
-                <span className="text-xs font-bold text-[#141413]">
-                  Real Travel Budget Benchmark
-                </span>
-              </div>
-              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                ~{formatPrice(budgetEstimate.dailyAveragePerPerson)} / day
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-              <div className="p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-center">
-                <span className="text-[10px] text-mutedText block font-medium">🏨 Lodging</span>
-                <span className="text-xs font-bold text-[#141413] mt-0.5 block">
-                  {formatPrice(budgetEstimate.rates.lodgingPerNight)}<span className="text-[9px] font-normal text-mutedText">/nt</span>
-                </span>
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-center">
-                <span className="text-[10px] text-mutedText block font-medium">🍽 Food & Dining</span>
-                <span className="text-xs font-bold text-[#141413] mt-0.5 block">
-                  {formatPrice(budgetEstimate.rates.foodPerDay)}<span className="text-[9px] font-normal text-mutedText">/day</span>
-                </span>
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-center">
-                <span className="text-[10px] text-mutedText block font-medium">🏛 Sights & Tours</span>
-                <span className="text-xs font-bold text-[#141413] mt-0.5 block">
-                  {formatPrice(budgetEstimate.rates.activitiesPerDay)}<span className="text-[9px] font-normal text-mutedText">/day</span>
-                </span>
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-[#FAF8F5] border border-borderSoft text-center">
-                <span className="text-[10px] text-mutedText block font-medium">🚇 Local Transit</span>
-                <span className="text-xs font-bold text-[#141413] mt-0.5 block">
-                  {formatPrice(budgetEstimate.rates.transitPerDay)}<span className="text-[9px] font-normal text-mutedText">/day</span>
-                </span>
-              </div>
-            </div>
-
-            {/* 5-day estimated ground total */}
-            <div className="flex items-center justify-between text-[11px] text-mutedText border-t border-borderSoft pt-2">
-              <span>Standard 5-day trip estimate (ground expenses):</span>
-              <span className="font-bold text-[#141413]">{formatPrice(budgetEstimate.groundTotal)}</span>
-            </div>
           </div>
         </div>
 
@@ -283,7 +265,7 @@ export default function PlaceSplitView({
             <div className="py-16 text-center space-y-3">
               <div className="w-8 h-8 border-2 border-[#C24B27] border-t-transparent rounded-full animate-spin mx-auto" />
               <p className="text-xs text-mutedText font-semibold">
-                Loading authentic places and coordinates in {placeName}...
+                Loading...
               </p>
             </div>
           ) : filteredPlaces.length === 0 ? (
@@ -293,7 +275,7 @@ export default function PlaceSplitView({
               <p className="text-[11px] text-mutedText mt-1">Try switching to "All Highlights" or refresh.</p>
             </div>
           ) : (
-            filteredPlaces.map((item, idx) => {
+            displayedPlaces.map((item, idx) => {
               const isSelected = selectedPlaceId === item.id;
 
               return (
@@ -344,8 +326,8 @@ export default function PlaceSplitView({
                           >
                             <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
                             <span>{item.rating}</span>
-                            {item.reviewsCount ? (
-                              <span className="text-mutedText text-[10px] font-normal">({item.reviewsCount})</span>
+                            {(item.reviews_count || item.reviewsCount) ? (
+                              <span className="text-mutedText text-[10px] font-normal">({item.reviews_count || item.reviewsCount})</span>
                             ) : null}
                           </button>
                         ) : null}
@@ -394,7 +376,7 @@ export default function PlaceSplitView({
                           title="Read Real Reviews"
                         >
                           <MessageSquare className="w-3 h-3 text-[#C24B27]" />
-                          <span>Real Reviews ({reviewsList.length || 3})</span>
+                          <span>Real Reviews ({item.reviews_count || item.reviewsCount || 3})</span>
                         </button>
                       )}
 
@@ -415,6 +397,20 @@ export default function PlaceSplitView({
                 </div>
               );
             })
+          )}
+
+          {/* Load More Button */}
+          {filteredPlaces.length > visibleCount && (
+            <div className="pt-2 pb-4 text-center">
+              <button
+                type="button"
+                onClick={() => setVisibleCount(prev => prev + 10)}
+                className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-[#FAF8F5] border border-borderSoft text-xs font-bold text-[#141413] hover:text-[#C24B27] hover:border-[#C24B27]/40 shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>Load More Places (+{Math.min(10, filteredPlaces.length - visibleCount)} remaining)</span>
+                <ChevronRight className="w-3.5 h-3.5 rotate-90" />
+              </button>
+            </div>
           )}
         </div>
       </div>

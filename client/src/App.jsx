@@ -14,7 +14,7 @@ import CreateTripModal from './components/planner/CreateTripModal';
 import StreetViewModal from './components/streetview/StreetViewModal';
 import ReviewsModal from './components/reviews/ReviewsModal';
 import { useAuth } from './context/AuthContext';
-import { fetchTrips, fetchTrip, createTrip } from './api';
+import { fetchTrips, fetchTrip, createTrip, addItineraryItem } from './api';
 
 
 export default function App() {
@@ -74,6 +74,20 @@ export default function App() {
   const [reviewsPlace, setReviewsPlace] = useState(null);
   const [isReviewsOpen, setIsReviewsOpen] = useState(false);
 
+  // Stays Search Parameters (Destination, Dates, Guests) passed from ExploreDashboard
+  const [staysSearchParams, setStaysSearchParams] = useState(null);
+
+  const handleNavigateView = (view, params = null) => {
+    if (!currentUser && view !== 'landing') {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    if (params) {
+      setStaysSearchParams(params);
+    }
+    setCurrentView(view);
+  };
+
   // Track the active user UID to prevent saving stale state across user switches
   const lastUserUidRef = React.useRef(currentUser?.uid || null);
 
@@ -90,6 +104,7 @@ export default function App() {
       if (currentView === 'landing') {
         setCurrentView('explore');
       }
+      window.scrollTo(0, 0);
     } else {
       // If logged out, reset to clean slate
       setActiveTrip(null);
@@ -311,25 +326,84 @@ export default function App() {
     setIsReviewsOpen(true);
   };
 
-  const handleAddPlaceToWorkspace = (place) => {
-    if (activeTrip) {
-      const newItem = {
-        id: `itin_${Date.now()}`,
-        day_number: 1,
-        name: place.name,
-        category: place.category,
-        latitude: place.latitude,
-        longitude: place.longitude,
-        address: place.address,
-        photo_url: place.photo_url,
-        rating: place.rating
-      };
-      setActiveTrip(prev => ({
-        ...prev,
-        items: [...(prev.items || []), newItem]
-      }));
-      setCurrentView('workspace');
+  const handleUpdateTrip = (updated) => {
+    setActiveTrip(updated);
+    setTrips(prev => {
+      const exists = prev.some(t => t.id === updated.id);
+      const next = exists ? prev.map(t => t.id === updated.id ? { ...t, ...updated } : t) : [updated, ...prev];
+      if (currentUser?.uid) {
+        try {
+          localStorage.setItem(`wandernest_trips_${currentUser.uid}`, JSON.stringify(next));
+        } catch (e) {}
+      }
+      return next;
+    });
+  };
+
+  const handleAddPlaceToWorkspace = async (place, targetDay = 1) => {
+    let tripToUse = activeTrip;
+    if (!tripToUse && trips && trips.length > 0) {
+      tripToUse = trips[0];
     }
+    if (!tripToUse) {
+      const destName = place.city || place.address?.split(',')?.[0]?.trim() || 'Custom Destination';
+      tripToUse = {
+        id: `trip_${Date.now()}`,
+        title: `${destName} Itinerary`,
+        destination: destName,
+        country: 'Worldwide',
+        latitude: parseFloat(place.latitude || place.lat) || 35.6762,
+        longitude: parseFloat(place.longitude || place.lng) || 139.6503,
+        daysCount: 5,
+        items: [],
+        expenses: []
+      };
+    }
+
+    const dayNum = parseInt(targetDay, 10) || 1;
+    const newItem = {
+      id: `itin_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      trip_id: tripToUse.id,
+      day_number: dayNum,
+      place_id: place.id || place.place_id,
+      name: place.name || 'Unnamed Spot',
+      category: place.category || 'do',
+      latitude: parseFloat(place.latitude || place.lat) || 0,
+      longitude: parseFloat(place.longitude || place.lng) || 0,
+      address: place.address || '',
+      photo_url: place.photo_url || place.photoUrl || place.image || '',
+      rating: place.rating || null,
+      estimated_time: '1-2 hours'
+    };
+
+    const updated = {
+      ...tripToUse,
+      items: [...(tripToUse.items || []), newItem]
+    };
+
+    handleUpdateTrip(updated);
+
+    // Sync to backend if user is logged in
+    try {
+      if (currentUser && tripToUse.id && !tripToUse.id.startsWith('workspace_')) {
+        await addItineraryItem(tripToUse.id, {
+          dayNumber: dayNum,
+          placeId: newItem.place_id,
+          name: newItem.name,
+          category: newItem.category,
+          latitude: newItem.latitude,
+          longitude: newItem.longitude,
+          address: newItem.address,
+          photoUrl: newItem.photo_url,
+          rating: newItem.rating || 4.5,
+          estimatedTime: newItem.estimated_time
+        });
+      }
+    } catch (err) {
+      console.warn('Backend item sync skipped (saved locally in workspace):', err);
+    }
+
+    setCurrentView('workspace');
   };
 
   return (
@@ -427,7 +501,7 @@ export default function App() {
             }}
             onOpenStreetView={handleOpenStreetView}
             onOpenReviews={handleOpenReviews}
-            onNavigateView={(v) => setCurrentView(v)}
+            onNavigateView={handleNavigateView}
             onUpdateTripHotel={handleUpdateTripHotel}
           />
         )}
@@ -436,7 +510,8 @@ export default function App() {
         {currentView === 'stays' && (
           <StaysPage
             activeTrip={activeTrip}
-            onBackToWorkspace={() => setCurrentView('workspace')}
+            initialParams={staysSearchParams}
+            onBackToWorkspace={() => setCurrentView(currentUser ? 'explore' : 'landing')}
             onOpenStreetView={handleOpenStreetView}
             onOpenReviews={handleOpenReviews}
             onUpdateTripHotel={handleUpdateTripHotel}
@@ -457,7 +532,7 @@ export default function App() {
           <TripPlanner
             trip={activeTrip}
             onBack={() => setCurrentView('my-trips')}
-            onUpdateTrip={(updated) => setActiveTrip(updated)}
+            onUpdateTrip={handleUpdateTrip}
             onSwitchDestination={handleSwitchDestination}
           />
         )}

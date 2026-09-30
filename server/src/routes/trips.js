@@ -103,7 +103,7 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Title, destination, latitude, and longitude are required' });
   }
 
-  const tripId = generateId('trip');
+  const tripId = req.body.id || generateId('trip');
   const now = new Date();
   const tripData = {
     id: tripId,
@@ -227,6 +227,10 @@ router.post('/:id/items', async (req, res) => {
     return res.status(400).json({ success: false, error: 'name, latitude, and longitude are required' });
   }
 
+  let cleanCategory = 'do';
+  if (category === 'eat' || /eat|food|restaurant|dining|cafe/i.test(category)) cleanCategory = 'eat';
+  else if (category === 'stay' || /stay|hotel|lodging/i.test(category)) cleanCategory = 'stay';
+
   const itemId = generateId('item');
   const itemData = {
     id: itemId,
@@ -234,22 +238,30 @@ router.post('/:id/items', async (req, res) => {
     day_number: parseInt(dayNumber, 10) || 1,
     place_id: placeId || itemId,
     name,
-    category,
+    category: cleanCategory,
     latitude: parseFloat(latitude),
     longitude: parseFloat(longitude),
-    address,
-    photo_url: photoUrl,
+    address: address || '',
+    photo_url: photoUrl || '',
     rating: parseFloat(rating) || 4.5,
     user_rating: 0,
-    user_notes: userNotes,
+    user_notes: userNotes || '',
     order_index: 0,
-    estimated_time: estimatedTime
+    estimated_time: estimatedTime || '1-2 hours'
   };
 
   const { pool, isConnected } = getDb();
 
   try {
     if (isConnected && pool) {
+      const [existing] = await pool.query('SELECT id FROM trips WHERE id = ?', [tripId]);
+      if (!existing.length) {
+        await pool.query(
+          `INSERT INTO trips (id, user_id, title, destination, country, latitude, longitude)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [tripId, req.body.userId || 'guest_default', 'Trip Workspace', 'Destination', 'Worldwide', itemData.latitude, itemData.longitude]
+        );
+      }
       await pool.query(
         `INSERT INTO itinerary_items (id, trip_id, day_number, place_id, name, category, latitude, longitude, address, photo_url, rating, user_rating, user_notes, order_index, estimated_time)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -261,10 +273,23 @@ router.post('/:id/items', async (req, res) => {
         ]
       );
     } else {
+      if (!memoryDb.trips.has(tripId)) {
+        memoryDb.trips.set(tripId, {
+          id: tripId,
+          user_id: 'guest_default',
+          title: 'Trip Workspace',
+          destination: 'Destination',
+          country: 'Worldwide',
+          latitude: itemData.latitude,
+          longitude: itemData.longitude,
+          created_at: new Date()
+        });
+      }
       memoryDb.itinerary_items.set(itemId, itemData);
     }
     res.status(201).json({ success: true, data: itemData });
   } catch (error) {
+    console.error('Add itinerary item error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

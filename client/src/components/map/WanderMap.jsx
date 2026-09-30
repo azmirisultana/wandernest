@@ -14,16 +14,43 @@ L.Icon.Default.mergeOptions({
 // Smoothly re-center map when coordinates change or place selected
 function MapController({ center, zoom, selectedCoord }) {
   const map = useMap();
+  const prevCenterRef = useRef([null, null]);
+
+  // Ensure map container renders tiles across its full width and height
   useEffect(() => {
-    if (selectedCoord && selectedCoord[0] && selectedCoord[1]) {
+    map.invalidateSize();
+    const timer = setTimeout(() => {
+      try {
+        map.invalidateSize();
+      } catch (e) {}
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [map]);
+
+  useEffect(() => {
+    if (selectedCoord && !isNaN(selectedCoord[0]) && !isNaN(selectedCoord[1])) {
       map.flyTo(selectedCoord, Math.max(map.getZoom(), 15), {
         animate: true,
         duration: 0.8
       });
-    } else if (center && center[0] && center[1]) {
-      map.setView(center, zoom);
+      return;
     }
-  }, [center, zoom, selectedCoord, map]);
+
+    if (center && !isNaN(center[0]) && !isNaN(center[1])) {
+      const latDiff = Math.abs((prevCenterRef.current[0] ?? 999) - center[0]);
+      const lngDiff = Math.abs((prevCenterRef.current[1] ?? 999) - center[1]);
+      if (latDiff > 0.0001 || lngDiff > 0.0001) {
+        prevCenterRef.current = [center[0], center[1]];
+        map.setView(center, zoom || 13, { animate: false });
+        setTimeout(() => {
+          try {
+            map.invalidateSize();
+          } catch (e) {}
+        }, 150);
+      }
+    }
+  }, [center?.[0], center?.[1], zoom, selectedCoord?.[0], selectedCoord?.[1], map]);
+
   return null;
 }
 
@@ -114,22 +141,18 @@ function createHotelMarkerIcon(hotel) {
   });
 }
 
-// Available Real Map Styles
+// Available Real Map Styles (Strictly English Labels Worldwide)
 const MAP_TILES = {
   streets: {
-    name: 'Google Streets',
+    name: 'English Streets',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; Esri & OpenStreetMap Street Engine'
-  },
-  dark: {
-    name: 'Carto Light',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; OpenStreetMap & CartoDB'
+    attribution: 'Tiles &copy; Esri'
   },
   satellite: {
     name: 'Satellite View',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; Esri World Imagery'
+    subdomains: 'abc',
+    attribution: 'Tiles &copy; Esri'
   }
 };
 
@@ -140,13 +163,14 @@ export default function WanderMap({
   itineraryItems = [],
   baseHotel = null,
   activePlaceId = null,
+  targetDay = null,
   onSelectPlace,
   onAddToItinerary,
   onOpenStreetView,
   onOpenReviews
 }) {
   const mapRef = useRef(null);
-  const [mapStyle, setMapStyle] = useState('streets'); // 'streets' | 'dark' | 'satellite'
+  const [mapStyle, setMapStyle] = useState('streets'); // 'streets' | 'satellite'
 
   const centerCoord = [
     parseFloat(center?.[0]) || 35.6762,
@@ -172,8 +196,10 @@ export default function WanderMap({
         ref={mapRef}
       >
         <TileLayer
-          attribution={MAP_TILES[mapStyle].attribution}
-          url={MAP_TILES[mapStyle].url}
+          key={mapStyle}
+          attribution={MAP_TILES[mapStyle]?.attribution || MAP_TILES.streets.attribution}
+          url={MAP_TILES[mapStyle]?.url || MAP_TILES.streets.url}
+          subdomains={MAP_TILES[mapStyle]?.subdomains || 'abc'}
           maxZoom={19}
         />
 
@@ -196,12 +222,14 @@ export default function WanderMap({
 
         {/* Markers for Scheduled Itinerary items */}
         {itineraryItems.map((item, idx) => {
-          if (!item.latitude || !item.longitude) return null;
+          const iLat = parseFloat(item.latitude ?? item.lat);
+          const iLng = parseFloat(item.longitude ?? item.lng);
+          if (isNaN(iLat) || isNaN(iLng)) return null;
           const isActive = item.id === activePlaceId;
           return (
             <Marker
               key={`itin_${item.id}`}
-              position={[parseFloat(item.latitude), parseFloat(item.longitude)]}
+              position={[iLat, iLng]}
               icon={createSleekMarkerIcon(item, true, idx + 1, isActive)}
               eventHandlers={{
                 click: () => onSelectPlace && onSelectPlace(item)
@@ -281,7 +309,7 @@ export default function WanderMap({
         })}
 
         {/* Basecamp Hotel Anchor Marker */}
-        {baseHotel?.latitude && baseHotel?.longitude && (
+        {baseHotel && !isNaN(parseFloat(baseHotel.latitude)) && !isNaN(parseFloat(baseHotel.longitude)) && (
           <Marker
             key={`basecamp_${baseHotel.name}`}
             position={[parseFloat(baseHotel.latitude), parseFloat(baseHotel.longitude)]}
@@ -308,14 +336,16 @@ export default function WanderMap({
 
         {/* Markers for Discovered Places */}
         {places.map((place) => {
-          if (!place.latitude || !place.longitude) return null;
+          const pLat = parseFloat(place.latitude ?? place.lat);
+          const pLng = parseFloat(place.longitude ?? place.lng);
+          if (isNaN(pLat) || isNaN(pLng)) return null;
           if (itineraryItems.some(i => i.id === place.id || i.place_id === place.id)) return null;
           
           const isActive = place.id === activePlaceId;
           return (
             <Marker
               key={`place_${place.id}`}
-              position={[parseFloat(place.latitude), parseFloat(place.longitude)]}
+              position={[pLat, pLng]}
               icon={createSleekMarkerIcon(place, false, null, isActive)}
               eventHandlers={{
                 click: () => onSelectPlace && onSelectPlace(place)
@@ -390,11 +420,11 @@ export default function WanderMap({
 
                     {onAddToItinerary && (
                       <button
-                        onClick={() => onAddToItinerary(place)}
-                        className="w-full py-2 px-3 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white font-semibold text-xs flex items-center justify-center gap-1 transition-colors shadow-xs"
+                        onClick={() => onAddToItinerary(place, targetDay || 1)}
+                        className="w-full py-2 px-3 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Add to Itinerary Day</span>
+                        <span>{targetDay ? `Add to Day ${targetDay}` : 'Add to Itinerary Day'}</span>
                       </button>
                     )}
                   </div>
@@ -410,6 +440,7 @@ export default function WanderMap({
         {/* Map Tile Style Switcher */}
         <div className="bg-white/95 backdrop-blur-md p-1 rounded-xl border border-[#EBE7DF] shadow-lg flex items-center gap-1 text-xs text-[#141413]">
           <button
+            type="button"
             onClick={() => setMapStyle('streets')}
             className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
               mapStyle === 'streets'
@@ -417,19 +448,10 @@ export default function WanderMap({
                 : 'text-mutedText hover:text-[#141413]'
             }`}
           >
-            Google Streets
+            English Streets
           </button>
           <button
-            onClick={() => setMapStyle('dark')}
-            className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
-              mapStyle === 'dark'
-                ? 'bg-[#141413] text-white shadow-xs'
-                : 'text-mutedText hover:text-[#141413]'
-            }`}
-          >
-            Carto Light
-          </button>
-          <button
+            type="button"
             onClick={() => setMapStyle('satellite')}
             className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
               mapStyle === 'satellite'
@@ -439,12 +461,33 @@ export default function WanderMap({
           >
             Satellite
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              const target = activePlace || itineraryItems[0] || places[0] || {
+                name: 'Current Area',
+                latitude: centerCoord[0],
+                longitude: centerCoord[1],
+                address: 'Street View Location'
+              };
+              const lat = target.latitude || target.lat || centerCoord[0];
+              const lng = target.longitude || target.lng || centerCoord[1];
+              window.open(`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`, '_blank', 'noopener,noreferrer');
+              if (onOpenStreetView) onOpenStreetView(target);
+            }}
+            className="px-2.5 py-1 rounded-lg font-semibold transition-colors flex items-center gap-1 text-[#C24B27] hover:bg-[#FAF8F5]"
+            title="Open Google Street View (360°) in new tab"
+          >
+            <Compass className="w-3.5 h-3.5 text-[#C24B27]" />
+            <span>Street View ↗</span>
+          </button>
         </div>
       </div>
 
       {/* Street View Pegman & Quick 360 Action */}
       <div className="absolute bottom-6 right-4 z-[400] flex flex-col gap-2">
         <button
+          type="button"
           onClick={() => {
             const target = activePlace || itineraryItems[0] || places[0] || {
               name: 'Map Center',
@@ -452,13 +495,16 @@ export default function WanderMap({
               longitude: centerCoord[1],
               address: 'Current Map Location'
             };
+            const lat = target.latitude || target.lat || centerCoord[0];
+            const lng = target.longitude || target.lng || centerCoord[1];
+            window.open(`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`, '_blank', 'noopener,noreferrer');
             if (onOpenStreetView) onOpenStreetView(target);
           }}
-          title="Open Google Street View (360°)"
-          className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white font-semibold text-xs shadow-xl border border-[#141413] transition-all hover:scale-105 active:scale-95"
+          title="Open Google Street View (360°) in new tab"
+          className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white font-semibold text-xs shadow-xl border border-[#141413] transition-all hover:scale-105 active:scale-95 cursor-pointer"
         >
           <Compass className="w-4 h-4 text-[#C24B27]" />
-          <span>Street View (360°)</span>
+          <span>Street View (360°) ↗</span>
         </button>
       </div>
 

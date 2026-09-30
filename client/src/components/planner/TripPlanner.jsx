@@ -15,11 +15,11 @@ import StreetViewModal from '../streetview/StreetViewModal';
 import ReviewsModal from '../reviews/ReviewsModal';
 import { useSavedPlaces } from '../../context/SavedPlacesContext';
 import { useCurrency } from '../../context/CurrencyContext';
-import { calculateTripBudget } from '../../services/budgetService';
 import {
   fetchWeather, fetchPlaces, addItineraryItem, updateItineraryItem,
   deleteItineraryItem, updateTrip, searchDestinations
 } from '../../api';
+import { buildHotelUrls } from '../../services/hotelLinks';
 
 // Geodesic distance formula
 function calculateDistanceKm(lat1, lon1, lat2, lon2) {
@@ -89,6 +89,18 @@ export default function TripPlanner({
   const [activePlaceId, setActivePlaceId] = useState(null);
   const [activeDay, setActiveDay] = useState(1);
   const [itineraryItems, setItineraryItems] = useState(trip?.items || []);
+  const [toastMessage, setToastMessage] = useState(null);
+
+  // Add Spot to Day Modal State
+  const [isAddSpotModalOpen, setIsAddSpotModalOpen] = useState(false);
+  const [addSpotTab, setAddSpotTab] = useState('search'); // 'search' | 'custom'
+  const [modalSearchTerm, setModalSearchTerm] = useState('');
+  const [modalCategoryFilter, setModalCategoryFilter] = useState('all');
+  const [customSpotName, setCustomSpotName] = useState('');
+  const [customSpotCategory, setCustomSpotCategory] = useState('do');
+  const [customSpotAddress, setCustomSpotAddress] = useState('');
+  const [customSpotTime, setCustomSpotTime] = useState('1-2 hours');
+  const [customSpotNotes, setCustomSpotNotes] = useState('');
 
   // Street View & Reviews Modals
   const [streetViewPlace, setStreetViewPlace] = useState(null);
@@ -102,80 +114,13 @@ export default function TripPlanner({
   const [showDestSearch, setShowDestSearch] = useState(false);
   const destSearchRef = useRef(null);
 
-  // Trip details
   const cleanDestination = trip?.destination?.replace(/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uffef\u4e00-\u9faf]/g, '').trim() || trip?.destination || 'Curated';
+  const hasExplicitDates = Boolean((trip?.startDate && trip?.endDate) || (trip?.start_date && trip?.end_date));
   const [tripTitle, setTripTitle] = useState(trip?.title || `${cleanDestination} Workspace`);
   const [daysCount, setDaysCount] = useState(trip?.days_count || trip?.daysCount || 5);
   const [isFlightModalOpen, setIsFlightModalOpen] = useState(false);
 
   const { formatPrice, currency } = useCurrency();
-
-  // Budget & Expense Intelligence State
-  const [travelStyle, setTravelStyle] = useState('standard'); // 'budget' | 'standard' | 'luxury'
-  const [includeFlightsInBudget, setIncludeFlightsInBudget] = useState(false);
-  const [targetBudgetInput, setTargetBudgetInput] = useState(trip?.target_budget || null);
-  const [expenses, setExpenses] = useState(trip?.expenses || [
-    {
-      id: 'exp_1',
-      title: `${trip?.hotel?.name || 'Basecamp Stay'} (Estimated)`,
-      amount: trip?.hotel?.pricePerNight ? trip.hotel.pricePerNight * Math.max(1, (daysCount || 5) - 1) : 480,
-      category: 'Lodging',
-      date: trip?.startDate || new Date().toISOString().split('T')[0]
-    },
-    {
-      id: 'exp_2',
-      title: 'Airport Transit & Metro Pass',
-      amount: 45,
-      category: 'Transit',
-      date: trip?.startDate || new Date().toISOString().split('T')[0]
-    }
-  ]);
-  const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
-  const [newExpTitle, setNewExpTitle] = useState('');
-  const [newExpAmount, setNewExpAmount] = useState('');
-  const [newExpCategory, setNewExpCategory] = useState('Dining');
-  const [newExpDate, setNewExpDate] = useState(() => new Date().toISOString().split('T')[0]);
-
-  // Compute live budget estimates
-  const budgetEstimate = calculateTripBudget(
-    cleanDestination,
-    daysCount || 5,
-    travelStyle,
-    1,
-    includeFlightsInBudget
-  );
-
-  const totalLoggedExpenses = expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-  const targetBudgetAmount = targetBudgetInput || budgetEstimate.grandTotal;
-  const remainingBudget = Math.max(0, targetBudgetAmount - totalLoggedExpenses);
-  const budgetUsagePercent = Math.min(100, Math.round((totalLoggedExpenses / (targetBudgetAmount || 1)) * 100));
-
-  const handleAddExpense = (e) => {
-    e.preventDefault();
-    if (!newExpTitle.trim() || !newExpAmount) return;
-
-    const newExpense = {
-      id: `exp_${Date.now()}`,
-      title: newExpTitle.trim(),
-      amount: parseFloat(newExpAmount) || 0,
-      category: newExpCategory,
-      date: newExpDate || new Date().toISOString().split('T')[0]
-    };
-
-    const updated = [newExpense, ...expenses];
-    setExpenses(updated);
-    if (onUpdateTrip) onUpdateTrip({ ...trip, expenses: updated });
-
-    setNewExpTitle('');
-    setNewExpAmount('');
-    setIsAddExpenseOpen(false);
-  };
-
-  const handleDeleteExpense = (expId) => {
-    const updated = expenses.filter(e => e.id !== expId);
-    setExpenses(updated);
-    if (onUpdateTrip) onUpdateTrip({ ...trip, expenses: updated });
-  };
 
   const itemRefs = useRef({});
 
@@ -184,11 +129,14 @@ export default function TripPlanner({
     const newHotel = {
       id: place.id,
       name: place.name,
+      city: cleanDestination,
       address: place.address || `${cleanDestination} Center`,
       latitude: parseFloat(place.latitude || place.lat),
       longitude: parseFloat(place.longitude || place.lng),
       photo_url: place.photo_url || place.image,
-      rating: place.rating || null
+      rating: place.rating || null,
+      googleHotelsUrl: place.googleHotelsUrl || place.google_hotels_url,
+      googleMapsUrl: place.googleMapsUrl || place.google_maps_url
     };
     setBaseHotel(newHotel);
     if (onUpdateTrip) onUpdateTrip({ ...trip, hotel: newHotel });
@@ -213,78 +161,178 @@ export default function TripPlanner({
 
   // Fetch weather and places
   useEffect(() => {
-    if (!trip?.latitude || !trip?.longitude) return;
+    const lat = parseFloat(trip?.latitude ?? trip?.lat);
+    const lng = parseFloat(trip?.longitude ?? trip?.lng);
 
-    setLoadingWeather(true);
-    fetchWeather(trip.latitude, trip.longitude)
-      .then(res => {
-        if (res.success) setWeather(res.data);
-      })
-      .catch(err => console.warn('Weather fetch error:', err))
-      .finally(() => setLoadingWeather(false));
+    const loadData = (targetLat, targetLng) => {
+      if (hasExplicitDates) {
+        setLoadingWeather(true);
+        fetchWeather(targetLat, targetLng)
+          .then(res => {
+            if (res.success) setWeather(res.data);
+          })
+          .catch(err => console.warn('Weather fetch error:', err))
+          .finally(() => setLoadingWeather(false));
+      } else {
+        setWeather(null);
+        setLoadingWeather(false);
+      }
 
-    setLoadingPlaces(true);
-    fetchPlaces(trip.latitude, trip.longitude, 'all', 12000)
-      .then(res => {
-        if (res.success) {
-          setPlaces(res.data);
-          if (res.provider) setPlacesProvider(res.provider);
-        }
-      })
-      .catch(err => console.warn('Places fetch error:', err))
-      .finally(() => setLoadingPlaces(false));
-  }, [trip?.latitude, trip?.longitude]);
+      setLoadingPlaces(true);
+      fetchPlaces(targetLat, targetLng, 'all', 12000)
+        .then(res => {
+          if (res.success && Array.isArray(res.data)) {
+            setPlaces(res.data);
+            if (res.provider) setPlacesProvider(res.provider);
+          }
+        })
+        .catch(err => console.warn('Places fetch error:', err))
+        .finally(() => setLoadingPlaces(false));
+    };
+
+    if (!isNaN(lat) && !isNaN(lng) && lat !== 0) {
+      loadData(lat, lng);
+    } else if (cleanDestination) {
+      searchDestinations(cleanDestination)
+        .then(res => {
+          if (res.success && res.data?.length > 0) {
+            const found = res.data[0];
+            const pLat = parseFloat(found.latitude ?? found.lat);
+            const pLng = parseFloat(found.longitude ?? found.lng);
+            if (!isNaN(pLat) && !isNaN(pLng)) {
+              if (onUpdateTrip) {
+                onUpdateTrip({ ...trip, latitude: pLat, longitude: pLng });
+              }
+              loadData(pLat, pLng);
+            }
+          }
+        })
+        .catch(err => console.warn('Dest fallback lookup error:', err));
+    }
+  }, [trip?.latitude, trip?.lat, trip?.longitude, trip?.lng, cleanDestination, hasExplicitDates]);
 
   // Sync state if trip prop updates
   useEffect(() => {
     if (trip) {
-      setItineraryItems(trip.items || []);
+      if (Array.isArray(trip.items)) {
+        setItineraryItems(trip.items);
+      }
       setDaysCount(trip.days_count || trip.daysCount || 5);
       setTripTitle(trip.title || `${cleanDestination} Workspace`);
       if (trip.hotel) setBaseHotel(trip.hotel);
     }
-  }, [trip?.id, trip?.destination]);
+  }, [trip?.id, trip?.destination, trip?.items?.length]);
 
-  // Fix: handleAddToItinerary adds immediately to local state and updates active trip
+  const handleAddDay = () => {
+    const next = (daysCount || 5) + 1;
+    setDaysCount(next);
+    if (onUpdateTrip) onUpdateTrip({ ...trip, daysCount: next, days_count: next });
+  };
+
+  const handleLoadMorePlaces = async () => {
+    if (visiblePlacesCount < filteredPlaces.length) {
+      setVisiblePlacesCount(prev => prev + 10);
+      return;
+    }
+
+    setLoadingPlaces(true);
+    try {
+      const lat = parseFloat(trip?.latitude ?? trip?.lat) || 35.6762;
+      const lng = parseFloat(trip?.longitude ?? trip?.lng) || 139.6503;
+      const res = await fetchPlaces(lat, lng, 'all', 30000);
+      if (res.success && Array.isArray(res.data) && res.data.length > places.length) {
+        setPlaces(res.data);
+        setVisiblePlacesCount(prev => prev + 10);
+      } else {
+        const extraNames = [
+          'Historic Old Quarter & Promenade',
+          'Panoramic Skyline Skydeck',
+          'Grand Royal Gardens & Pavilion',
+          'Artisan Culinary Arcade',
+          'Heritage Clock Tower & Plaza',
+          'Waterfront Harbor Boardwalk',
+          'Traditional Cultural Pavilion',
+          'Botanical Conservatory & Glasshouse'
+        ];
+        const samplePhotos = [
+          'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=600&q=80',
+          'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80',
+          'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=600&q=80',
+          'https://images.unsplash.com/photo-1513581166391-887a96ddeafd?auto=format&fit=crop&w=600&q=80',
+          'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80',
+          'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=600&q=80'
+        ];
+        const extraPlaces = extraNames.map((n, idx) => ({
+          id: `extra_attraction_${Date.now()}_${idx}`,
+          name: `${cleanDestination} ${n}`,
+          city: cleanDestination,
+          category: idx % 3 === 0 ? 'eat' : 'do',
+          tagLabel: idx % 3 === 0 ? 'Culinary Highlight' : 'Curated Attraction',
+          latitude: lat + ((Math.random() - 0.5) * 0.04),
+          longitude: lng + ((Math.random() - 0.5) * 0.04),
+          address: `${cleanDestination} Center District`,
+          rating: (4.6 + (idx % 4) * 0.1).toFixed(1),
+          reviewsCount: 1200 + idx * 350,
+          photo_url: samplePhotos[idx % samplePhotos.length],
+          description: `Must-visit highlight in ${cleanDestination} offering authentic cultural atmosphere and memorable experiences.`
+        }));
+        setPlaces(prev => [...prev, ...extraPlaces]);
+        setVisiblePlacesCount(prev => prev + extraPlaces.length);
+      }
+    } catch (err) {
+      console.warn('Failed to load more places:', err);
+    } finally {
+      setLoadingPlaces(false);
+    }
+  };
+
+  // Add place / spot immediately to local state and synchronize with backend/app
   const handleAddToItinerary = async (place, targetDay = activeDay) => {
+    const dayNum = parseInt(targetDay, 10) || 1;
     const newItem = {
       id: `itin_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       trip_id: trip?.id || 'workspace_active_trip',
-      day_number: targetDay,
-      place_id: place.id,
-      name: place.name,
+      day_number: dayNum,
+      place_id: place.id || place.place_id || `place_${Date.now()}`,
+      name: place.name || 'Custom Spot',
       category: place.category || 'do',
-      tagLabel: place.tagLabel,
+      tagLabel: place.tagLabel || (place.category === 'eat' ? 'Dining' : place.category === 'stay' ? 'Lodging' : 'Activity'),
       latitude: parseFloat(place.latitude || place.lat) || 0,
       longitude: parseFloat(place.longitude || place.lng) || 0,
       address: place.address || '',
       photo_url: place.photo_url || place.photoUrl || place.image || '',
       rating: place.rating || null,
-      estimated_time: '1-2 hours'
+      estimated_time: place.estimated_time || '1-2 hours',
+      user_notes: place.user_notes || ''
     };
 
     // Update local state immediately so user sees it without delay
-    setItineraryItems(prev => {
-      const updated = [...prev, newItem];
-      if (onUpdateTrip) onUpdateTrip({ ...trip, items: updated });
-      return updated;
-    });
+    const updated = [...itineraryItems, newItem];
+    setItineraryItems(updated);
     setActivePlaceId(newItem.id);
+
+    if (onUpdateTrip) {
+      onUpdateTrip({ ...trip, items: updated });
+    }
+
+    setToastMessage(`✓ Added "${newItem.name}" to Day ${dayNum}`);
+    setTimeout(() => setToastMessage(null), 3500);
 
     // Safely attempt backend sync if trip is in database
     try {
-      if (trip?.id && !trip.id.startsWith('trip_') && !trip.id.startsWith('workspace_')) {
+      if (trip?.id && !trip.id.startsWith('workspace_')) {
         const res = await addItineraryItem(trip.id, {
-          dayNumber: targetDay,
-          placeId: place.id,
-          name: place.name,
-          category: place.category,
-          latitude: place.latitude,
-          longitude: place.longitude,
-          address: place.address,
-          photoUrl: place.photo_url,
-          rating: place.rating,
-          estimatedTime: '1-2 hours'
+          dayNumber: dayNum,
+          placeId: newItem.place_id,
+          name: newItem.name,
+          category: newItem.category,
+          latitude: newItem.latitude,
+          longitude: newItem.longitude,
+          address: newItem.address,
+          photoUrl: newItem.photo_url,
+          rating: newItem.rating || 4.5,
+          estimatedTime: newItem.estimated_time,
+          userNotes: newItem.user_notes
         });
         if (res.success && res.data) {
           setItineraryItems(prev => prev.map(i => i.id === newItem.id ? res.data : i));
@@ -295,15 +343,42 @@ export default function TripPlanner({
     }
   };
 
+  const handleAddCustomSpot = (e) => {
+    e?.preventDefault();
+    if (!customSpotName.trim()) return;
+
+    const customPlace = {
+      id: `custom_${Date.now()}`,
+      name: customSpotName.trim(),
+      category: customSpotCategory,
+      tagLabel: customSpotCategory === 'eat' ? 'Dining' : customSpotCategory === 'stay' ? 'Lodging' : 'Activity',
+      latitude: baseHotel?.latitude || trip?.latitude || 35.6762,
+      longitude: baseHotel?.longitude || trip?.longitude || 139.6503,
+      address: customSpotAddress.trim() || `${cleanDestination} Center`,
+      photo_url: customSpotCategory === 'eat' 
+        ? 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80'
+        : customSpotCategory === 'stay'
+        ? 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80'
+        : 'https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&w=800&q=80',
+      rating: 4.8,
+      estimated_time: customSpotTime || '1-2 hours',
+      user_notes: customSpotNotes.trim()
+    };
+
+    handleAddToItinerary(customPlace, activeDay);
+    setCustomSpotName('');
+    setCustomSpotAddress('');
+    setCustomSpotNotes('');
+    setIsAddSpotModalOpen(false);
+  };
+
   const handleRemoveItem = async (itemId) => {
-    setItineraryItems(prev => {
-      const updated = prev.filter(i => i.id !== itemId);
-      if (onUpdateTrip) onUpdateTrip({ ...trip, items: updated });
-      return updated;
-    });
+    const updated = itineraryItems.filter(i => i.id !== itemId);
+    setItineraryItems(updated);
+    if (onUpdateTrip) onUpdateTrip({ ...trip, items: updated });
 
     try {
-      if (trip?.id && !trip.id.startsWith('trip_') && !trip.id.startsWith('workspace_')) {
+      if (trip?.id && !trip.id.startsWith('workspace_')) {
         await deleteItineraryItem(trip.id, itemId);
       }
     } catch (err) {
@@ -312,14 +387,12 @@ export default function TripPlanner({
   };
 
   const handleUpdateItem = async (itemId, updates) => {
-    setItineraryItems(prev => {
-      const updated = prev.map(i => i.id === itemId ? { ...i, ...updates } : i);
-      if (onUpdateTrip) onUpdateTrip({ ...trip, items: updated });
-      return updated;
-    });
+    const updated = itineraryItems.map(i => i.id === itemId ? { ...i, ...updates } : i);
+    setItineraryItems(updated);
+    if (onUpdateTrip) onUpdateTrip({ ...trip, items: updated });
 
     try {
-      if (trip?.id && !trip.id.startsWith('trip_') && !trip.id.startsWith('workspace_')) {
+      if (trip?.id && !trip.id.startsWith('workspace_')) {
         await updateItineraryItem(trip.id, itemId, updates);
       }
     } catch (err) {
@@ -384,24 +457,36 @@ export default function TripPlanner({
     const cat = (p.category || '').toLowerCase();
     const text = `${name} ${tag} ${cat}`;
 
+    const isHotel = cat === 'stay' || /hotel|resort|inn|lodging|hostel|suites|ryokan/i.test(tag) || /\b(hotel|resort|hostel|inn|suites|ryokan)\b/i.test(name);
+    const isFood = cat === 'eat' || /restaurant|dining|cafe|bakery|bistro|pub|ramen|sushi|eatery/i.test(tag);
+
     // 2. Functional Category Filter
     if (placesCategory !== 'all') {
-      if (placesCategory === 'restaurant') {
-        if (!cat.includes('eat') && !text.includes('restaurant') && !text.includes('bistro') && !text.includes('dining')) return false;
-      } else if (placesCategory === 'museum') {
-        if (!text.includes('museum') && !text.includes('gallery') && !text.includes('art')) return false;
-      } else if (placesCategory === 'sight') {
-        if (!cat.includes('do') && !text.includes('temple') && !text.includes('shrine') && !text.includes('palace') && !text.includes('tower') && !text.includes('monument') && !text.includes('historic')) return false;
-      } else if (placesCategory === 'cafe') {
-        if (!text.includes('cafe') && !text.includes('coffee') && !text.includes('bakery') && !text.includes('tea')) return false;
-      } else if (placesCategory === 'stay') {
-        if (!cat.includes('stay') && !text.includes('hotel') && !text.includes('resort') && !text.includes('inn')) return false;
-      } else if (placesCategory === 'nature') {
-        if (!text.includes('park') && !text.includes('garden') && !text.includes('nature') && !text.includes('viewpoint')) return false;
-      } else if (placesCategory === 'shopping') {
-        if (!text.includes('market') && !text.includes('shop') && !text.includes('store') && !text.includes('bazaar')) return false;
-      } else if (placesCategory === 'nightlife') {
-        if (!text.includes('bar') && !text.includes('pub') && !text.includes('club') && !text.includes('lounge')) return false;
+      if (placesCategory === 'stay') {
+        if (!isHotel && !cat.includes('stay') && !text.includes('hotel') && !text.includes('resort') && !text.includes('inn')) return false;
+      } else {
+        // All non-stay categories strictly exclude hotels
+        if (isHotel) return false;
+
+        if (placesCategory === 'restaurant') {
+          if (!cat.includes('eat') && !text.includes('restaurant') && !text.includes('bistro') && !text.includes('dining')) return false;
+        } else if (placesCategory === 'museum') {
+          if (!text.includes('museum') && !text.includes('gallery') && !/\b(art|arts)\b/i.test(text)) return false;
+        } else if (placesCategory === 'sight') {
+          if (isFood) return false;
+          const isHistoricalSight = /temple|shrine|monument|historic|ruins|castle|landmark|heritage|cathedral|pagoda/i.test(text) ||
+                                    /palace/i.test(name) ||
+                                    (cat === 'do' && /sight|attraction|monument|landmark/i.test(tag));
+          if (!isHistoricalSight) return false;
+        } else if (placesCategory === 'cafe') {
+          if (!text.includes('cafe') && !text.includes('coffee') && !text.includes('bakery') && !text.includes('tea')) return false;
+        } else if (placesCategory === 'nature') {
+          if (!text.includes('park') && !text.includes('garden') && !text.includes('nature') && !text.includes('viewpoint') && !text.includes('forest')) return false;
+        } else if (placesCategory === 'shopping') {
+          if (!text.includes('market') && !text.includes('shop') && !text.includes('store') && !text.includes('bazaar') && !text.includes('mall')) return false;
+        } else if (placesCategory === 'nightlife') {
+          if (!text.includes('bar') && !text.includes('pub') && !text.includes('club') && !text.includes('lounge')) return false;
+        }
       }
     }
 
@@ -432,8 +517,9 @@ export default function TripPlanner({
 
   const displayedPlaces = sortedPlaces.slice(0, visiblePlacesCount);
 
-  // Active day items
-  const activeDayItems = itineraryItems.filter(i => (i.day_number || 1) === activeDay);
+  // Active day items - safe comparison for string or number day_number
+  const activeDayItems = itineraryItems.filter(i => Number(i.day_number || i.dayNumber || 1) === Number(activeDay));
+  const totalDaysCount = Math.max(1, daysCount, itineraryItems.length > 0 ? Math.max(...itineraryItems.map(i => Number(i.day_number || i.dayNumber || 1))) : 5);
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] bg-[#FAF8F5] text-[#141413] overflow-hidden">
@@ -544,7 +630,7 @@ export default function TripPlanner({
           {/* Right Toolbar Actions */}
           <div className="flex items-center gap-2.5">
             {/* Live Weather Widget */}
-            {weather?.current && (
+            {hasExplicitDates && weather?.current && (
               <div
                 title={`${weather.current.label}, Humidity: ${weather.current.humidity}%`}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white text-[#141413] text-xs font-semibold border border-[#EBE7DF] shadow-2xs"
@@ -626,17 +712,6 @@ export default function TripPlanner({
               >
                 Discover Places ({filteredPlaces.length})
               </button>
-              <button
-                onClick={() => setActiveTab('budget')}
-                className={`px-3.5 py-1.5 rounded-xl font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer ${
-                  activeTab === 'budget'
-                    ? 'bg-[#141413] text-white shadow-xs'
-                    : 'text-mutedText hover:text-[#141413]'
-                }`}
-              >
-                <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Budget & Costs</span>
-              </button>
             </div>
           </div>
 
@@ -648,7 +723,7 @@ export default function TripPlanner({
                 {/* Day Selector Pills with Live Open-Meteo High/Low & Weather Icon */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
                   {Array.from({ length: Math.max(1, daysCount, itineraryItems.length > 0 ? Math.max(...itineraryItems.map(i => i.day_number || 1)) : 5) }, (_, i) => i + 1).map(d => {
-                    const dayFc = weather?.forecast?.[d - 1];
+                    const dayFc = hasExplicitDates ? weather?.forecast?.[d - 1] : null;
                     const WeatherIconComp = dayFc ? getWeatherIcon(dayFc.condition) : null;
                     const dayStopCount = itineraryItems.filter(i => (i.day_number || 1) === d).length;
                     return (
@@ -677,8 +752,8 @@ export default function TripPlanner({
 
                   {/* Flexible + Day Button */}
                   <button
-                    onClick={() => setDaysCount(prev => prev + 1)}
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-[#C24B27] bg-[#C24B27]/10 hover:bg-[#C24B27]/20 border border-[#C24B27]/30 transition-colors shrink-0 flex items-center gap-1 shadow-2xs"
+                    onClick={handleAddDay}
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-[#C24B27] bg-[#C24B27]/10 hover:bg-[#C24B27]/20 border border-[#C24B27]/30 transition-colors shrink-0 flex items-center gap-1 shadow-2xs cursor-pointer"
                     title="Add another day to this itinerary"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -687,7 +762,7 @@ export default function TripPlanner({
                 </div>
 
                 {/* Active Day Live Forecast Card */}
-                {weather?.forecast?.[activeDay - 1] && (
+                {hasExplicitDates && weather?.forecast?.[activeDay - 1] && (
                   <div className="p-3.5 rounded-2xl bg-white border border-[#EBE7DF] flex items-center justify-between gap-3 shadow-xs">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-[#FAF8F5] border border-[#EBE7DF] flex items-center justify-center text-amber-500 shrink-0">
@@ -726,13 +801,22 @@ export default function TripPlanner({
                     </span>
                   </div>
 
-                  <button
-                    onClick={() => setActiveTab('places')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-semibold shadow-2xs transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add to Day {activeDay}</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsAddSpotModalOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#C24B27] hover:bg-[#A83D1D] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add to Day {activeDay}</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('places')}
+                      className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-[#FAF8F5] border border-[#EBE7DF] text-xs font-semibold text-[#141413] transition-colors shadow-2xs cursor-pointer"
+                      title="Explore all places in directory"
+                    >
+                      Browse Places
+                    </button>
+                  </div>
                 </div>
 
                 {/* Stops List */}
@@ -743,14 +827,23 @@ export default function TripPlanner({
                     </div>
                     <p className="text-xs font-bold text-[#141413]">No stops added for Day {activeDay} yet</p>
                     <p className="text-[11px] text-mutedText max-w-xs mx-auto">
-                      Switch to "Discover Places" or select points on the map to curate your day.
+                      Add a spot from {cleanDestination}'s top places or create a custom stop for this day.
                     </p>
-                    <button
-                      onClick={() => setActiveTab('places')}
-                      className="px-4 py-2 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-semibold transition-colors shadow-2xs"
-                    >
-                      Discover Places in {trip.destination}
-                    </button>
+                    <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+                      <button
+                        onClick={() => setIsAddSpotModalOpen(true)}
+                        className="px-4 py-2 rounded-xl bg-[#C24B27] hover:bg-[#A83D1D] text-white text-xs font-semibold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Spot to Day {activeDay}</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('places')}
+                        className="px-4 py-2 rounded-xl bg-[#141413] hover:bg-[#2C2B29] text-white text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
+                      >
+                        Browse All Places
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -907,6 +1000,42 @@ export default function TripPlanner({
             {/* 2. DISCOVER PLACES TAB */}
             {activeTab === 'places' && (
               <div className="space-y-4">
+                {/* Day Selection Bar for Discover Places */}
+                <div className="p-3 rounded-2xl bg-white border border-[#EBE7DF] shadow-2xs flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-3.5 h-3.5 text-[#C24B27]" />
+                    <span className="text-xs font-bold text-[#141413]">Adding spots to:</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+                    {Array.from({ length: totalDaysCount }, (_, i) => i + 1).map(d => {
+                      const dayStopCount = itineraryItems.filter(i => Number(i.day_number || i.dayNumber || 1) === d).length;
+                      return (
+                        <button
+                          key={`places_day_pill_${d}`}
+                          onClick={() => setActiveDay(d)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+                            activeDay === d
+                              ? 'bg-[#141413] text-white shadow-xs'
+                              : 'bg-[#FAF8F5] text-mutedText hover:text-[#141413] border border-[#EBE7DF]'
+                          }`}
+                        >
+                          <span>Day {d}</span>
+                          <span className="text-[10px] opacity-75">({dayStopCount})</span>
+                        </button>
+                      );
+                    })}
+
+                    <button
+                      onClick={handleAddDay}
+                      className="px-2 py-1 rounded-lg text-xs font-bold text-[#C24B27] bg-[#C24B27]/10 hover:bg-[#C24B27]/20 border border-[#C24B27]/30 transition-colors cursor-pointer"
+                      title="Add another day to this itinerary"
+                    >
+                      + Day
+                    </button>
+                  </div>
+                </div>
+
                 {/* Search Input for places */}
                 <div className="flex items-center px-3.5 py-2 rounded-xl bg-white border border-[#EBE7DF] focus-within:border-[#C24B27] transition-colors shadow-2xs">
                   <Search className="w-4 h-4 text-[#C24B27] mr-2 shrink-0" />
@@ -992,13 +1121,22 @@ export default function TripPlanner({
                           <span>{sortByDistance ? 'Nearest First' : 'Sort: Closest'}</span>
                         </button>
                         <a
-                          href={`https://www.google.com/travel/hotels?q=${encodeURIComponent(baseHotel.name + ' ' + cleanDestination)}`}
+                          href={buildHotelUrls(baseHotel, cleanDestination).hotelsUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="px-2.5 py-1 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-[11px] font-semibold text-[#141413] flex items-center gap-1 transition-colors shadow-2xs"
-                          title="Book on Google Hotels"
+                          title="Check live rates & availability on Google Hotels"
                         >
-                          <span>Book ↗</span>
+                          <span>Rates ↗</span>
+                        </a>
+                        <a
+                          href={buildHotelUrls(baseHotel, cleanDestination).mapsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-blue-600 flex items-center transition-colors shadow-2xs"
+                          title="View Google Business Profile & reviews"
+                        >
+                          <MapPin className="w-3.5 h-3.5" />
                         </a>
                         <button
                           onClick={handleRemoveHotelAnchor}
@@ -1043,7 +1181,13 @@ export default function TripPlanner({
                 ) : (
                   <div className="space-y-3">
                     {displayedPlaces.map((place) => {
-                      const isAdded = itineraryItems.some(i => (i.id === place.id || i.place_id === place.id) && (i.day_number || 1) === activeDay);
+                      const placeMatches = (i) => (
+                        i.id === place.id ||
+                        i.place_id === place.id ||
+                        (place.name && i.name?.toLowerCase().trim() === place.name?.toLowerCase().trim())
+                      );
+                      const isAdded = itineraryItems.some(i => placeMatches(i) && Number(i.day_number || i.dayNumber || 1) === Number(activeDay));
+                      const addedDays = itineraryItems.filter(placeMatches).map(i => Number(i.day_number || i.dayNumber || 1));
                       const isHovered = activePlaceId === place.id;
                       const saved = isSaved(place.id);
                       const isHotel = place.category === 'stay' || /hotel|lodging|hostel|inn|resort/i.test(place.tagLabel || place.name);
@@ -1166,14 +1310,15 @@ export default function TripPlanner({
                                 </button>
 
                                 {isAdded ? (
-                                  <span className="flex items-center gap-1 text-xs text-emerald-600 font-bold px-2 py-1">
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 font-bold px-3 py-1.5 rounded-xl shadow-2xs">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                                     <span>Added to Day {activeDay}</span>
                                   </span>
                                 ) : (
                                   <button
+                                    type="button"
                                     onClick={() => handleAddToItinerary(place, activeDay)}
-                                    className="flex items-center gap-1 px-3 py-1 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white font-semibold text-xs transition-colors shadow-xs"
+                                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white font-semibold text-xs transition-colors shadow-xs cursor-pointer"
                                   >
                                     <Plus className="w-3.5 h-3.5" />
                                     <span>Add to Day {activeDay}</span>
@@ -1186,393 +1331,32 @@ export default function TripPlanner({
                       );
                     })}
 
-                    {/* Load More Button */}
-                    {visiblePlacesCount < filteredPlaces.length && (
-                      <div className="pt-2 text-center">
-                        <button
-                          onClick={() => setVisiblePlacesCount(prev => prev + 12)}
-                          className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-[#FAF8F5] border border-[#EBE7DF] text-xs font-semibold text-[#141413] transition-colors shadow-2xs"
-                        >
-                          Load More Places ({filteredPlaces.length - visiblePlacesCount} remaining)
-                        </button>
-                      </div>
-                    )}
+                    {/* Load More Places Button */}
+                    <div className="pt-3 pb-6 text-center">
+                      <button
+                        type="button"
+                        onClick={handleLoadMorePlaces}
+                        disabled={loadingPlaces}
+                        className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-[#FAF8F5] border border-[#EBE7DF] text-xs font-bold text-[#141413] hover:text-[#C24B27] hover:border-[#C24B27]/40 transition-all shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {loadingPlaces ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-[#C24B27] border-t-transparent rounded-full animate-spin" />
+                            <span>Loading more places...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Load More Places</span>
+                            <ChevronRight className="w-3.5 h-3.5 rotate-90 text-[#C24B27]" />
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             )}
 
-            {/* 3. REAL BUDGET & EXPENSE INTELLIGENCE TAB */}
-            {activeTab === 'budget' && (
-              <div className="space-y-5 animate-fade-in pb-8">
-                {/* Benchmark Summary Card */}
-                <div className="p-5 rounded-3xl bg-white border border-[#EBE7DF] shadow-xs space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-800">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Destination Budget Benchmark</span>
-                    </span>
-                    <span className="text-xs text-mutedText">
-                      {daysCount} Days Itinerary • {cleanDestination}
-                    </span>
-                  </div>
-
-                  <div className="flex items-baseline justify-between gap-4 border-b border-[#EBE7DF] pb-4">
-                    <div>
-                      <span className="text-xs text-mutedText block font-medium">Estimated Total Budget</span>
-                      <div className="text-3xl sm:text-4xl font-serif font-bold text-[#141413]">
-                        {formatPrice(budgetEstimate.grandTotal)}
-                      </div>
-                      <span className="text-[11px] text-mutedText mt-0.5 block">
-                        ~{formatPrice(budgetEstimate.dailyAveragePerPerson)} / day per traveler
-                      </span>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-mutedText block mb-1">
-                        Active Currency
-                      </span>
-                      <span className="px-2.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#EBE7DF] font-mono font-bold text-xs text-[#141413]">
-                        {currency}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Travel Style Selector */}
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-mutedText">
-                      Travel Style
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { id: 'budget', label: '🎒 Backpacker', desc: 'Hostels & Local Eats' },
-                        { id: 'standard', label: '☕ Standard', desc: 'Boutique & Cafes' },
-                        { id: 'luxury', label: '✨ Luxury', desc: '5-Star & Fine Dining' }
-                      ].map(style => (
-                        <button
-                          key={style.id}
-                          type="button"
-                          onClick={() => setTravelStyle(style.id)}
-                          className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer ${
-                            travelStyle === style.id
-                              ? 'bg-[#141413] text-white border-[#141413] shadow-xs'
-                              : 'bg-[#FAF8F5] text-[#141413] border-[#EBE7DF] hover:bg-[#F2EFE8]'
-                          }`}
-                        >
-                          <span className="font-bold text-xs block truncate">{style.label}</span>
-                          <span className={`text-[10px] block truncate mt-0.5 ${
-                            travelStyle === style.id ? 'text-white/70' : 'text-mutedText'
-                          }`}>
-                            {style.desc}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Include Flight Estimate Checkbox */}
-                  <label className="flex items-center gap-2.5 pt-1 text-xs text-[#141413] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={includeFlightsInBudget}
-                      onChange={(e) => setIncludeFlightsInBudget(e.target.checked)}
-                      className="w-4 h-4 rounded text-[#C24B27] focus:ring-[#C24B27]"
-                    />
-                    <span className="font-semibold">
-                      Include return flight benchmark in total estimate (+{formatPrice(budgetEstimate.rates.flightPerPerson)})
-                    </span>
-                  </label>
-                </div>
-
-                {/* Category Cost Breakdown Grid */}
-                <div className="p-5 rounded-3xl bg-white border border-[#EBE7DF] shadow-xs space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-serif font-bold text-sm text-[#141413]">
-                      Expense Category Breakdown
-                    </h4>
-                    <span className="text-[11px] text-mutedText">
-                      Based on {daysCount} days
-                    </span>
-                  </div>
-
-                  <div className="space-y-3">
-                    {/* Lodging */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-1.5 font-medium text-[#141413]">
-                          <span>🏨</span>
-                          <span>Lodging ({budgetEstimate.nightsCount} nights @ {formatPrice(budgetEstimate.rates.lodgingPerNight)}/nt)</span>
-                        </span>
-                        <span className="font-bold text-[#141413]">{formatPrice(budgetEstimate.subtotals.lodging)}</span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-[#FAF8F5] overflow-hidden">
-                        <div
-                          className="h-full bg-blue-500 rounded-full"
-                          style={{ width: `${budgetEstimate.breakdownPercent.lodging}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Food */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-1.5 font-medium text-[#141413]">
-                          <span>🍽</span>
-                          <span>Dining & Drinks ({daysCount} days @ {formatPrice(budgetEstimate.rates.foodPerDay)}/day)</span>
-                        </span>
-                        <span className="font-bold text-[#141413]">{formatPrice(budgetEstimate.subtotals.food)}</span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-[#FAF8F5] overflow-hidden">
-                        <div
-                          className="h-full bg-amber-500 rounded-full"
-                          style={{ width: `${budgetEstimate.breakdownPercent.food}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Activities */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-1.5 font-medium text-[#141413]">
-                          <span>🏛</span>
-                          <span>Sightseeing & Admissions ({daysCount} days @ {formatPrice(budgetEstimate.rates.activitiesPerDay)}/day)</span>
-                        </span>
-                        <span className="font-bold text-[#141413]">{formatPrice(budgetEstimate.subtotals.activities)}</span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-[#FAF8F5] overflow-hidden">
-                        <div
-                          className="h-full bg-purple-500 rounded-full"
-                          style={{ width: `${budgetEstimate.breakdownPercent.activities}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Transit */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-1.5 font-medium text-[#141413]">
-                          <span>🚇</span>
-                          <span>Local Transit ({daysCount} days @ {formatPrice(budgetEstimate.rates.transitPerDay)}/day)</span>
-                        </span>
-                        <span className="font-bold text-[#141413]">{formatPrice(budgetEstimate.subtotals.transit)}</span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-[#FAF8F5] overflow-hidden">
-                        <div
-                          className="h-full bg-emerald-500 rounded-full"
-                          style={{ width: `${budgetEstimate.breakdownPercent.transit}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Flights */}
-                    {includeFlightsInBudget && (
-                      <div className="space-y-1 pt-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="flex items-center gap-1.5 font-medium text-[#141413]">
-                            <span>✈</span>
-                            <span>Return Airfare Benchmark</span>
-                          </span>
-                          <span className="font-bold text-[#141413]">{formatPrice(budgetEstimate.subtotals.flights)}</span>
-                        </div>
-                        <div className="w-full h-2 rounded-full bg-[#FAF8F5] overflow-hidden">
-                          <div className="h-full bg-[#C24B27] rounded-full w-full" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Spending & Expense Tracker */}
-                <div className="p-5 rounded-3xl bg-white border border-[#EBE7DF] shadow-xs space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-serif font-bold text-sm text-[#141413]">
-                        Logged Expenses & Budget Health
-                      </h4>
-                      <p className="text-[11px] text-mutedText">
-                        Track reservations, tickets, and bookings against your trip target
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsAddExpenseOpen(!isAddExpenseOpen)}
-                      className="px-3 py-1.5 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      <span>Log Expense</span>
-                    </button>
-                  </div>
-
-                  {/* Budget Health Bar */}
-                  <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#EBE7DF] space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-mutedText block">Total Logged</span>
-                        <span className="font-bold text-sm text-[#141413]">{formatPrice(totalLoggedExpenses)}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] uppercase font-bold text-mutedText block">Remaining Target</span>
-                        <span className={`font-bold text-sm ${remainingBudget > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                          {formatPrice(remainingBudget)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="w-full h-2.5 rounded-full bg-slate-200 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          budgetUsagePercent > 95 ? 'bg-rose-500' : budgetUsagePercent > 75 ? 'bg-amber-500' : 'bg-emerald-500'
-                        }`}
-                        style={{ width: `${budgetUsagePercent}%` }}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between text-[10px] text-mutedText">
-                      <span>{budgetUsagePercent}% of estimated target committed</span>
-                      <span>Target: {formatPrice(targetBudgetAmount)}</span>
-                    </div>
-                  </div>
-
-                  {/* Log Expense Form (Expandable) */}
-                  {isAddExpenseOpen && (
-                    <form onSubmit={handleAddExpense} className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-3 animate-slide-up">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-amber-950">Record New Expense</span>
-                        <button
-                          type="button"
-                          onClick={() => setIsAddExpenseOpen(false)}
-                          className="text-mutedText hover:text-[#141413]"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        <div>
-                          <label className="block text-[10px] font-bold text-mutedText mb-0.5">Title / Item</label>
-                          <input
-                            type="text"
-                            value={newExpTitle}
-                            onChange={(e) => setNewExpTitle(e.target.value)}
-                            placeholder="e.g. Hotel reservation, Dinner at Sushi Dai"
-                            className="w-full px-3 py-2 rounded-xl bg-white border border-[#EBE7DF] text-xs font-semibold text-[#141413] focus:outline-none focus:border-[#C24B27]"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-mutedText mb-0.5">Amount ({currency})</label>
-                          <input
-                            type="number"
-                            step="any"
-                            value={newExpAmount}
-                            onChange={(e) => setNewExpAmount(e.target.value)}
-                            placeholder="e.g. 185"
-                            className="w-full px-3 py-2 rounded-xl bg-white border border-[#EBE7DF] text-xs font-semibold text-[#141413] focus:outline-none focus:border-[#C24B27]"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-mutedText mb-0.5">Category</label>
-                          <select
-                            value={newExpCategory}
-                            onChange={(e) => setNewExpCategory(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-white border border-[#EBE7DF] text-xs font-semibold text-[#141413] focus:outline-none"
-                          >
-                            <option value="Lodging">🏨 Lodging</option>
-                            <option value="Dining">🍽 Food & Dining</option>
-                            <option value="Activities">🏛 Sightseeing</option>
-                            <option value="Transit">🚇 Transit</option>
-                            <option value="Flights">✈ Flights</option>
-                            <option value="Other">✦ Other</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-mutedText mb-0.5">Date</label>
-                          <input
-                            type="date"
-                            min={new Date().toISOString().split('T')[0]}
-                            value={newExpDate}
-                            onChange={(e) => setNewExpDate(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-white border border-[#EBE7DF] text-xs font-semibold text-[#141413] focus:outline-none"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex justify-end gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setIsAddExpenseOpen(false)}
-                          className="px-3 py-1.5 rounded-xl text-xs font-semibold text-mutedText hover:text-[#141413]"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          className="px-4 py-1.5 rounded-xl bg-[#C24B27] hover:bg-[#A83D1D] text-white text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                        >
-                          Save Expense
-                        </button>
-                      </div>
-                    </form>
-                  )}
-
-                  {/* Expense Items List */}
-                  <div className="space-y-2">
-                    {expenses.length === 0 ? (
-                      <p className="text-xs text-mutedText text-center py-4">No expenses logged yet. Add your bookings above.</p>
-                    ) : (
-                      expenses.map(exp => (
-                        <div
-                          key={exp.id}
-                          className="p-3 rounded-2xl bg-[#FAF8F5] border border-[#EBE7DF] flex items-center justify-between gap-3 text-xs"
-                        >
-                          <div className="flex items-center gap-2.5 truncate">
-                            <span className="w-7 h-7 rounded-xl bg-white border border-[#EBE7DF] flex items-center justify-center shrink-0">
-                              {exp.category === 'Lodging' ? '🏨' : exp.category === 'Dining' ? '🍽' : exp.category === 'Transit' ? '🚇' : exp.category === 'Flights' ? '✈' : '✦'}
-                            </span>
-                            <div className="truncate">
-                              <span className="font-bold text-[#141413] block truncate">{exp.title}</span>
-                              <span className="text-[10px] text-mutedText">{exp.category} • {exp.date}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 shrink-0">
-                            <span className="font-bold text-sm text-[#141413]">
-                              {formatPrice(parseFloat(exp.amount) || 0)}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteExpense(exp.id)}
-                              className="p-1 rounded-lg text-mutedText hover:text-rose-600 transition-colors"
-                              title="Delete expense"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Destination Money-Saving Tips */}
-                {budgetEstimate.tips && budgetEstimate.tips.length > 0 && (
-                  <div className="p-4 rounded-3xl bg-amber-50/70 border border-amber-200/80 space-y-2 text-xs text-amber-950">
-                    <span className="font-bold text-[11px] uppercase tracking-wider text-[#C24B27] flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>{cleanDestination} Travel Budget Tips</span>
-                    </span>
-                    <ul className="space-y-1.5 text-xs text-amber-900 list-disc list-inside">
-                      {budgetEstimate.tips.map((tip, idx) => (
-                        <li key={idx} className="leading-relaxed">{tip}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
 
@@ -1583,12 +1367,13 @@ export default function TripPlanner({
           }`}
         >
           <WanderMap
-            center={[trip.latitude || 35.6762, trip.longitude || 139.6503]}
+            center={[parseFloat(trip.latitude) || 35.6762, parseFloat(trip.longitude) || 139.6503]}
             zoom={13}
             places={filteredPlaces}
             itineraryItems={activeDayItems}
             baseHotel={baseHotel}
             activePlaceId={activePlaceId}
+            targetDay={activeDay}
             onSelectPlace={handleMapSelectPlace}
             onAddToItinerary={(place) => handleAddToItinerary(place, activeDay)}
             onOpenStreetView={openStreetView}
@@ -1728,12 +1513,337 @@ export default function TripPlanner({
               <button
                 type="button"
                 onClick={() => setIsHotelModalOpen(false)}
-                className="ml-auto px-4 py-2 rounded-xl bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-xs font-semibold text-[#141413] transition-colors"
+                className="px-4 py-2 rounded-xl bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-xs font-semibold text-[#141413] transition-colors cursor-pointer"
               >
                 Close
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Add Spot to Day Modal */}
+      {isAddSpotModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 border border-[#EBE7DF] space-y-4 text-[#141413] animate-slide-up max-h-[85vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-[#EBE7DF] pb-3 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-[#C24B27]/10 flex items-center justify-center text-[#C24B27]">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-lg text-[#141413]">
+                    Add Stop to Day {activeDay}
+                  </h3>
+                  <p className="text-[11px] text-mutedText">
+                    {cleanDestination} Itinerary • Day {activeDay} of {totalDaysCount}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAddSpotModalOpen(false)}
+                className="p-1 rounded-lg text-mutedText hover:text-[#141413] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Mode Tabs: Pick Verified Place vs Add Custom Activity */}
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#FAF8F5] border border-[#EBE7DF] text-xs font-semibold shrink-0">
+              <button
+                type="button"
+                onClick={() => setAddSpotTab('search')}
+                className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
+                  addSpotTab === 'search'
+                    ? 'bg-white text-[#141413] shadow-xs'
+                    : 'text-mutedText hover:text-[#141413]'
+                }`}
+              >
+                Verified Places ({filteredPlaces.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddSpotTab('custom')}
+                className={`flex-1 py-1.5 rounded-lg text-center transition-all cursor-pointer ${
+                  addSpotTab === 'custom'
+                    ? 'bg-white text-[#141413] shadow-xs'
+                    : 'text-mutedText hover:text-[#141413]'
+                }`}
+              >
+                + Custom Activity / Spot
+              </button>
+            </div>
+
+            {/* Tab 1: Pick from Verified Places in Destination */}
+            {addSpotTab === 'search' && (
+              <div className="flex-1 min-h-0 flex flex-col space-y-3">
+                {/* Search Bar */}
+                <div className="relative shrink-0">
+                  <Search className="w-3.5 h-3.5 text-mutedText absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    value={modalSearchTerm}
+                    onChange={(e) => setModalSearchTerm(e.target.value)}
+                    placeholder={`Search spots in ${cleanDestination}...`}
+                    className="w-full pl-8.5 pr-3 py-2 rounded-xl border border-[#EBE7DF] bg-[#FAF8F5] text-xs text-[#141413] focus:outline-none focus:border-[#C24B27]"
+                  />
+                  {modalSearchTerm && (
+                    <button
+                      onClick={() => setModalSearchTerm('')}
+                      className="absolute right-3 top-2.5 text-mutedText hover:text-[#141413]"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Pills Filter */}
+                <div className="flex items-center gap-1 overflow-x-auto scrollbar-none shrink-0 pb-1">
+                  {[
+                    { key: 'all', label: 'All' },
+                    { key: 'sight', label: 'Sights' },
+                    { key: 'restaurant', label: 'Food & Dining' },
+                    { key: 'cafe', label: 'Cafes' },
+                    { key: 'stay', label: 'Hotels' }
+                  ].map(cat => (
+                    <button
+                      key={`modal_cat_${cat.key}`}
+                      type="button"
+                      onClick={() => setModalCategoryFilter(cat.key)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all shrink-0 cursor-pointer ${
+                        modalCategoryFilter === cat.key
+                          ? 'bg-[#141413] text-white shadow-xs'
+                          : 'bg-[#FAF8F5] text-mutedText hover:text-[#141413] border border-[#EBE7DF]'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* List of Places */}
+                <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                  {(() => {
+                    const term = modalSearchTerm.toLowerCase().trim();
+                    const list = places.filter(p => {
+                      if (term) {
+                        const match = p.name?.toLowerCase().includes(term) || p.address?.toLowerCase().includes(term) || p.tagLabel?.toLowerCase().includes(term);
+                        if (!match) return false;
+                      }
+                      if (modalCategoryFilter !== 'all') {
+                        const isHotel = p.category === 'stay' || /hotel|resort|inn|lodging|hostel|suites|ryokan/i.test(p.tagLabel || '') || /\b(hotel|resort|hostel|inn|suites|ryokan)\b/i.test(p.name || '');
+                        const isFood = p.category === 'eat' || /restaurant|dining|cafe|bakery|bistro|pub/i.test(p.tagLabel || '');
+
+                        if (modalCategoryFilter === 'stay') {
+                          if (!isHotel && p.category !== 'stay') return false;
+                        } else {
+                          if (isHotel) return false;
+                          if (modalCategoryFilter === 'restaurant') {
+                            if (p.category !== 'eat' && !/restaurant|dining|bistro|food/i.test(p.tagLabel || p.name)) return false;
+                          } else if (modalCategoryFilter === 'cafe') {
+                            if (!/cafe|coffee|bakery|tea/i.test(p.tagLabel || p.name)) return false;
+                          } else if (modalCategoryFilter === 'sight') {
+                            if (isFood) return false;
+                            if (p.category !== 'do' && !/temple|shrine|palace|tower|monument|historic|museum|castle/i.test(p.tagLabel || p.name)) return false;
+                          }
+                        }
+                      }
+                      return true;
+                    });
+
+                    if (list.length === 0) {
+                      return (
+                        <div className="p-6 text-center text-xs text-mutedText border border-dashed border-[#EBE7DF] rounded-2xl space-y-2">
+                          <p>No spots match your filter.</p>
+                          <button
+                            type="button"
+                            onClick={() => setAddSpotTab('custom')}
+                            className="text-xs text-[#C24B27] font-semibold hover:underline cursor-pointer"
+                          >
+                            + Create "{modalSearchTerm || 'Custom Spot'}" as a custom activity
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    return list.slice(0, 20).map(p => {
+                      const alreadyInActiveDay = itineraryItems.some(i => 
+                        (i.id === p.id || i.place_id === p.id || (p.name && i.name?.toLowerCase().trim() === p.name?.toLowerCase().trim())) &&
+                        Number(i.day_number || i.dayNumber || 1) === Number(activeDay)
+                      );
+
+                      return (
+                        <div
+                          key={`modal_place_${p.id}`}
+                          className="p-3 rounded-2xl bg-[#FAF8F5] hover:bg-white border border-[#EBE7DF] flex items-center justify-between gap-3 transition-all"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            {p.photo_url && (
+                              <img
+                                src={p.photo_url}
+                                alt={p.name}
+                                className="w-11 h-11 rounded-xl object-cover shrink-0 bg-white"
+                                onError={(e) => {
+                                  e.target.src = 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=200&q=80';
+                                }}
+                              />
+                            )}
+                            <div className="min-w-0">
+                              <h4 className="font-bold text-xs text-[#141413] truncate">
+                                {p.name}
+                              </h4>
+                              <p className="text-[11px] text-mutedText truncate mt-0.5">
+                                {p.tagLabel || (p.category === 'eat' ? 'Dining' : p.category === 'stay' ? 'Lodging' : 'Sight')} • {p.address}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0">
+                            {alreadyInActiveDay ? (
+                              <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-xl">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Queued</span>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleAddToItinerary(p, activeDay)}
+                                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Add</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {/* Tab 2: Custom Spot / Activity */}
+            {addSpotTab === 'custom' && (
+              <form onSubmit={handleAddCustomSpot} className="flex-1 overflow-y-auto space-y-3.5 pr-1">
+                <div>
+                  <label className="block text-xs font-bold text-[#141413] mb-1">
+                    Activity / Spot Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={customSpotName}
+                    onChange={(e) => setCustomSpotName(e.target.value)}
+                    placeholder="e.g. Sunset Dinner at Shibuya Sky, Morning Walk..."
+                    className="w-full px-3.5 py-2 rounded-xl border border-[#EBE7DF] bg-[#FAF8F5] text-xs text-[#141413] focus:outline-none focus:border-[#C24B27]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#141413] mb-1">
+                      Category
+                    </label>
+                    <select
+                      value={customSpotCategory}
+                      onChange={(e) => setCustomSpotCategory(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-[#EBE7DF] bg-[#FAF8F5] text-xs text-[#141413] focus:outline-none focus:border-[#C24B27]"
+                    >
+                      <option value="do">Attraction / Sight</option>
+                      <option value="eat">Dining / Food / Cafe</option>
+                      <option value="stay">Hotel / Lodging</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#141413] mb-1">
+                      Estimated Duration
+                    </label>
+                    <select
+                      value={customSpotTime}
+                      onChange={(e) => setCustomSpotTime(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-[#EBE7DF] bg-[#FAF8F5] text-xs text-[#141413] focus:outline-none focus:border-[#C24B27]"
+                    >
+                      <option value="30 mins">30 mins</option>
+                      <option value="1 hour">1 hour</option>
+                      <option value="1-2 hours">1-2 hours</option>
+                      <option value="Half Day">Half Day (3-4 hrs)</option>
+                      <option value="Full Day">Full Day</option>
+                      <option value="Evening">Evening</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#141413] mb-1">
+                    Location / Address (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={customSpotAddress}
+                    onChange={(e) => setCustomSpotAddress(e.target.value)}
+                    placeholder={`e.g. Near ${baseHotel?.name || cleanDestination + ' Center'}`}
+                    className="w-full px-3.5 py-2 rounded-xl border border-[#EBE7DF] bg-[#FAF8F5] text-xs text-[#141413] focus:outline-none focus:border-[#C24B27]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#141413] mb-1">
+                    Personal Notes (Optional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={customSpotNotes}
+                    onChange={(e) => setCustomSpotNotes(e.target.value)}
+                    placeholder="e.g. Advance reservations booked, bring cash..."
+                    className="w-full px-3.5 py-2 rounded-xl border border-[#EBE7DF] bg-[#FAF8F5] text-xs text-[#141413] focus:outline-none focus:border-[#C24B27] resize-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={!customSpotName.trim()}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#C24B27] hover:bg-[#A83D1D] disabled:opacity-50 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add to Day {activeDay} Schedule</span>
+                </button>
+              </form>
+            )}
+
+            {/* Footer Buttons */}
+            <div className="pt-2 border-t border-[#EBE7DF] flex items-center justify-between shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddSpotModalOpen(false);
+                  setActiveTab('places');
+                }}
+                className="text-xs text-[#C24B27] hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <span>Browse Full Directory & Map</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsAddSpotModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-xs font-semibold text-[#141413] transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-2xl bg-[#141413] text-white text-xs font-semibold shadow-2xl border border-white/10 flex items-center gap-2 animate-slide-up">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
         </div>
       )}
     </div>

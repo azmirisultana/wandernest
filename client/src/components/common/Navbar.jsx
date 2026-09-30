@@ -72,19 +72,34 @@ export default function Navbar({
     }
   };
 
-  const handleSearchSubmit = (e) => {
+  const handleSearchSubmit = async (e) => {
     if (e) e.preventDefault();
-    if (!searchQuery.trim()) return;
+    const query = searchQuery.trim();
+    if (!query) return;
 
     if (searchResults.length > 0) {
       handleSelectToExplore(searchResults[0]);
-    } else {
+      return;
+    }
+
+    try {
+      setIsSearching(true);
+      const res = await searchDestinations(query);
+      if (res.success && res.data?.length > 0) {
+        handleSelectToExplore(res.data[0]);
+      } else {
+        handleSelectToExplore({
+          name: query,
+          country: 'Worldwide'
+        });
+      }
+    } catch {
       handleSelectToExplore({
-        name: searchQuery.trim(),
-        country: 'Worldwide',
-        latitude: 35.6762,
-        longitude: 139.6503
+        name: query,
+        country: 'Worldwide'
       });
+    } finally {
+      setIsSearching(false);
     }
   };
 

@@ -43,9 +43,9 @@ export default {
         }
       },
       fontFamily: {
-        serif: ['Newsreader', 'Playfair Display', 'Georgia', 'serif'],
-        display: ['Playfair Display', 'Newsreader', 'Georgia', 'serif'],
-        sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'],
+        serif: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
       boxShadow: {
         'soft': '0 4px 24px -2px rgba(20, 20, 19, 0.06)',
