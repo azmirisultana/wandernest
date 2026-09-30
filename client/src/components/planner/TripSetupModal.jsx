@@ -56,7 +56,7 @@ export default function TripSetupModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#141413]/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-[#141413]/60 backdrop-blur-sm animate-fade-in">
       <div className="relative w-full max-w-lg bg-[#FAF8F5] rounded-3xl shadow-2xl border border-borderSoft overflow-hidden text-[#141413]">
         {/* Cover Preview Header */}
         <div className="relative h-36 overflow-hidden bg-slate-900">

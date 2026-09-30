@@ -12,7 +12,6 @@ import ProfilePage from './components/profile/ProfilePage';
 import AuthModal from './components/auth/AuthModal';
 import CreateTripModal from './components/planner/CreateTripModal';
 import StreetViewModal from './components/streetview/StreetViewModal';
-import ReviewsModal from './components/reviews/ReviewsModal';
 import { useAuth } from './context/AuthContext';
 import { fetchTrips, fetchTrip, createTrip, addItineraryItem } from './api';
 
@@ -68,11 +67,9 @@ export default function App() {
     setCurrentView('place-preview');
   };
 
-  // Global modals for Street View and Reviews
+  // Global modal for Street View
   const [streetViewPlace, setStreetViewPlace] = useState(null);
   const [isStreetViewOpen, setIsStreetViewOpen] = useState(false);
-  const [reviewsPlace, setReviewsPlace] = useState(null);
-  const [isReviewsOpen, setIsReviewsOpen] = useState(false);
 
   // Stays Search Parameters (Destination, Dates, Guests) passed from ExploreDashboard
   const [staysSearchParams, setStaysSearchParams] = useState(null);
@@ -321,11 +318,6 @@ export default function App() {
     setIsStreetViewOpen(true);
   };
 
-  const handleOpenReviews = (place) => {
-    setReviewsPlace(place);
-    setIsReviewsOpen(true);
-  };
-
   const handleUpdateTrip = (updated) => {
     setActiveTrip(updated);
     setTrips(prev => {
@@ -464,13 +456,6 @@ export default function App() {
         place={streetViewPlace}
       />
 
-      {/* Global Reviews Modal */}
-      <ReviewsModal
-        isOpen={isReviewsOpen}
-        onClose={() => setIsReviewsOpen(false)}
-        place={reviewsPlace}
-      />
-
       {/* Main Views */}
       <main className={`flex-1 ${currentView === 'workspace' || currentView === 'place-preview' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         {/* 1. Logged-Out Landing Page */}
@@ -500,7 +485,6 @@ export default function App() {
               else setCurrentView('workspace');
             }}
             onOpenStreetView={handleOpenStreetView}
-            onOpenReviews={handleOpenReviews}
             onNavigateView={handleNavigateView}
             onUpdateTripHotel={handleUpdateTripHotel}
           />
@@ -513,7 +497,6 @@ export default function App() {
             initialParams={staysSearchParams}
             onBackToWorkspace={() => setCurrentView(currentUser ? 'explore' : 'landing')}
             onOpenStreetView={handleOpenStreetView}
-            onOpenReviews={handleOpenReviews}
             onUpdateTripHotel={handleUpdateTripHotel}
             onAddToItinerary={handleAddPlaceToWorkspace}
           />
@@ -543,7 +526,6 @@ export default function App() {
             onBackToWorkspace={() => setCurrentView('workspace')}
             onAddToItinerary={handleAddPlaceToWorkspace}
             onOpenStreetView={handleOpenStreetView}
-            onOpenReviews={handleOpenReviews}
           />
         )}
 
@@ -580,7 +562,6 @@ export default function App() {
               handleStartPlanning(targetPlace || viewingPlace, initialPlace);
             }}
             onOpenStreetView={handleOpenStreetView}
-            onOpenReviews={handleOpenReviews}
           />
         )}
       </main>

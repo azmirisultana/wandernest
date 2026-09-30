@@ -185,7 +185,7 @@ export default function MyTrips({ trips = [], onSelectTrip, onRefreshTrips, onSt
 
       {/* Quick Create Trip Modal */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-fade-in">
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-fade-in">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 border border-[#EBE7DF] space-y-4 animate-slide-up">
             <h3 className="font-bold font-serif text-lg text-[#141413]">New Itinerary</h3>
             <form onSubmit={handleCreate} className="space-y-3">

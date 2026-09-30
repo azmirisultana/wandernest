@@ -61,7 +61,6 @@ export default function StaysPage({
   initialParams,
   onBackToWorkspace,
   onOpenStreetView,
-  onOpenReviews,
   onUpdateTripHotel,
   onAddToItinerary
 }) {

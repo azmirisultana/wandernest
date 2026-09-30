@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   MapPin, Calendar, Compass, ArrowLeft, ArrowRight, Star,
   Eye, Utensils, Landmark, Hotel, RotateCw, Sparkles,
-  ExternalLink, Layers, MessageSquare, ChevronRight, Check,
+  ExternalLink, Layers, ChevronRight, Check,
   DollarSign, ShieldCheck, TrendingUp, Info
 } from 'lucide-react';
 import WanderMap from '../map/WanderMap';
@@ -13,8 +13,7 @@ export default function PlaceSplitView({
   place,
   onBack,
   onStartPlanning,
-  onOpenStreetView,
-  onOpenReviews
+  onOpenStreetView
 }) {
   const { formatPrice, currency } = useCurrency();
   const [places, setPlaces] = useState([]);
@@ -315,21 +314,14 @@ export default function PlaceSplitView({
                         <span className="text-[10px] font-bold uppercase tracking-wider text-[#C24B27]">
                           {item.category === 'eat' ? '🍽 Dining' : item.category === 'stay' ? '🏨 Hotel' : '✦ Attraction'}
                         </span>
-                        {item.rating ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (onOpenReviews) onOpenReviews(item);
-                            }}
-                            className="flex items-center gap-1 text-[11px] font-bold text-amber-500 hover:text-amber-600 transition-colors"
-                          >
+                        {item.source === 'google' && item.rating ? (
+                          <div className="flex items-center gap-1 text-[11px] font-bold text-amber-500">
                             <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
                             <span>{item.rating}</span>
                             {(item.reviews_count || item.reviewsCount) ? (
                               <span className="text-mutedText text-[10px] font-normal">({item.reviews_count || item.reviewsCount})</span>
                             ) : null}
-                          </button>
+                          </div>
                         ) : null}
                       </div>
 
@@ -365,20 +357,16 @@ export default function PlaceSplitView({
                         </button>
                       )}
 
-                      {onOpenReviews && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenReviews(item);
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-[#FAF8F5] hover:bg-[#F2EFE8] text-[10px] font-semibold text-[#141413] border border-borderSoft flex items-center gap-1 transition-colors cursor-pointer"
-                          title="Read Real Reviews"
-                        >
-                          <MessageSquare className="w-3 h-3 text-[#C24B27]" />
-                          <span>Real Reviews ({item.reviews_count || item.reviewsCount || 3})</span>
-                        </button>
-                      )}
+                      <a
+                        href={item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name + ' ' + (item.address || ''))}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-2.5 py-1 rounded-lg bg-[#FAF8F5] hover:bg-[#F2EFE8] text-[10px] font-semibold text-blue-600 border border-borderSoft flex items-center gap-1 transition-colors"
+                        title="View on Google Maps"
+                      >
+                        <span>Google Maps ↗</span>
+                      </a>
 
                       <button
                         type="button"
@@ -428,7 +416,6 @@ export default function PlaceSplitView({
             onStartPlanning(place, selectedItem);
           }}
           onOpenStreetView={onOpenStreetView}
-          onOpenReviews={onOpenReviews}
         />
       </div>
     </div>

@@ -175,7 +175,7 @@ export default function CreateTripModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
       <div 
         ref={dropdownRef}
         className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-borderSoft overflow-visible text-[#141413] animate-slide-up flex flex-col"

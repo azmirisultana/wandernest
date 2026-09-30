@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Bookmark, MapPin, Trash2, Plus, Star, Eye, Utensils, Hotel, ArrowLeft, ExternalLink, Compass } from 'lucide-react';
+import { Bookmark, MapPin, Trash2, Plus, Star, Eye, Utensils, Hotel, ArrowLeft, ExternalLink, Compass, FileText } from 'lucide-react';
 import { useSavedPlaces } from '../../context/SavedPlacesContext';
 
-export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, onOpenStreetView, onOpenReviews }) {
-  const { savedPlaces, removeSavedPlace } = useSavedPlaces();
+export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, onOpenStreetView }) {
+  const { savedPlaces, removeSavedPlace, updatePlaceNote } = useSavedPlaces();
   const [filterCat, setFilterCat] = useState('all');
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [tempNote, setTempNote] = useState('');
 
   const filtered = savedPlaces.filter(p => {
     if (filterCat === 'all') return true;
@@ -19,7 +21,7 @@ export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, o
           <div className="space-y-1">
             <button
               onClick={onBackToWorkspace}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#6B6860] hover:text-[#141413] mb-2 transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#6B6860] hover:text-[#141413] mb-2 transition-colors cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Back to Workspace Planner</span>
@@ -43,7 +45,7 @@ export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, o
           <div className="flex items-center gap-1.5 p-1 rounded-xl bg-white border border-[#EBE7DF] text-xs font-medium shadow-xs">
             <button
               onClick={() => setFilterCat('all')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
+              className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
                 filterCat === 'all'
                   ? 'bg-[#C24B27] text-white shadow-xs'
                   : 'text-[#6B6860] hover:text-[#141413]'
@@ -53,7 +55,7 @@ export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, o
             </button>
             <button
               onClick={() => setFilterCat('do')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
+              className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
                 filterCat === 'do'
                   ? 'bg-[#C24B27] text-white shadow-xs'
                   : 'text-[#6B6860] hover:text-[#141413]'
@@ -63,7 +65,7 @@ export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, o
             </button>
             <button
               onClick={() => setFilterCat('eat')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
+              className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
                 filterCat === 'eat'
                   ? 'bg-[#C24B27] text-white shadow-xs'
                   : 'text-[#6B6860] hover:text-[#141413]'
@@ -73,7 +75,7 @@ export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, o
             </button>
             <button
               onClick={() => setFilterCat('stay')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
+              className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
                 filterCat === 'stay'
                   ? 'bg-[#C24B27] text-white shadow-xs'
                   : 'text-[#6B6860] hover:text-[#141413]'
@@ -96,7 +98,7 @@ export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, o
             </p>
             <button
               onClick={onBackToWorkspace}
-              className="px-5 py-2.5 rounded-xl bg-[#C24B27] hover:bg-[#A83D1D] text-white text-xs font-semibold shadow-xs transition-colors"
+              className="px-5 py-2.5 rounded-xl bg-[#C24B27] hover:bg-[#A83D1D] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
             >
               Explore Places in Workspace
             </button>
@@ -130,7 +132,7 @@ export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, o
                     <button
                       onClick={() => removeSavedPlace(place.id)}
                       title="Remove bookmark"
-                      className="absolute top-3 right-3 p-2 rounded-xl bg-white/90 backdrop-blur-md text-[#C24B27] hover:text-rose-600 border border-white/40 shadow-xs transition-colors"
+                      className="absolute top-3 right-3 p-2 rounded-xl bg-white/90 backdrop-blur-md text-[#C24B27] hover:text-rose-600 border border-white/40 shadow-xs transition-colors cursor-pointer"
                     >
                       <Bookmark className="w-4 h-4 fill-current" />
                     </button>
@@ -139,17 +141,17 @@ export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, o
                       <span className="text-[11px] font-semibold text-[#141413] bg-white/90 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/40 shadow-xs">
                         {place.tagLabel || (place.category === 'eat' ? 'Dining' : place.category === 'stay' ? 'Lodging' : 'Spot')}
                       </span>
-                      {place.rating && (
+                      {place.source === 'google' && place.rating ? (
                         <span className="flex items-center gap-1 text-amber-600 font-bold bg-white/90 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/40 shadow-xs">
                           <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
                           <span>{place.rating}</span>
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
 
                   {/* Body */}
-                  <div className="p-4 space-y-1.5">
+                  <div className="p-4 space-y-2">
                     <h3 className="font-semibold text-base text-[#141413] truncate font-serif">
                       {place.name}
                     </h3>
@@ -157,6 +159,79 @@ export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, o
                       <MapPin className="w-3.5 h-3.5 text-[#C24B27] shrink-0" />
                       <span>{place.address || 'Selected Spot'}</span>
                     </p>
+
+                    {/* Personal Note Box */}
+                    <div className="pt-2 border-t border-[#EBE7DF]/80">
+                      {editingNoteId === place.id ? (
+                        <div className="space-y-2 p-2.5 rounded-xl bg-[#FAF8F5] border border-[#EBE7DF]">
+                          <label className="block text-[11px] font-semibold text-[#141413] flex items-center gap-1">
+                            <FileText className="w-3 h-3 text-[#C24B27]" />
+                            <span>My Personal Note:</span>
+                          </label>
+                          <textarea
+                            value={tempNote}
+                            onChange={(e) => setTempNote(e.target.value)}
+                            placeholder="Add your note, tips, or reminder for this place..."
+                            className="w-full text-xs p-2 rounded-lg border border-[#EBE7DF] bg-white focus:outline-none focus:border-[#C24B27] resize-none"
+                            rows={2}
+                            autoFocus
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updatePlaceNote(place.id, tempNote);
+                                setEditingNoteId(null);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-[#141413] hover:bg-[#C24B27] text-white text-[10px] font-bold transition-colors cursor-pointer"
+                            >
+                              Save Note
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingNoteId(null)}
+                              className="px-2.5 py-1 rounded-lg bg-[#EBE7DF] hover:bg-gray-300 text-[#6B6860] text-[10px] font-semibold transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : place.note ? (
+                        <div className="p-2.5 rounded-xl bg-[#FAF8F5] border border-[#EBE7DF] space-y-1">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="font-bold text-[#C24B27] uppercase tracking-wider flex items-center gap-1">
+                              <FileText className="w-3 h-3" />
+                              <span>My Note</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTempNote(place.note || '');
+                                setEditingNoteId(place.id);
+                              }}
+                              className="text-[#6B6860] hover:text-[#141413] font-medium underline cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                          <p className="text-xs text-[#141413] break-words italic">
+                            "{place.note}"
+                          </p>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTempNote('');
+                            setEditingNoteId(place.id);
+                          }}
+                          className="inline-flex items-center gap-1 text-[11px] text-[#6B6860] hover:text-[#C24B27] transition-colors font-medium cursor-pointer"
+                        >
+                          <FileText className="w-3 h-3" />
+                          <span>+ Add personal note</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -165,32 +240,34 @@ export default function SavedPlacesPage({ onBackToWorkspace, onAddToItinerary, o
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => onOpenStreetView && onOpenStreetView(place)}
-                      className="py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-[#EBE7DF] text-[11px] font-semibold text-[#141413] flex items-center justify-center gap-1.5 transition-colors"
+                      className="py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-[#EBE7DF] text-[11px] font-semibold text-[#141413] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <Compass className="w-3.5 h-3.5 text-[#C24B27]" />
                       <span>Street View</span>
                     </button>
-                    <button
-                      onClick={() => onOpenReviews && onOpenReviews(place)}
-                      className="py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-[#EBE7DF] text-[11px] font-semibold text-[#141413] flex items-center justify-center gap-1.5 transition-colors"
+                    <a
+                      href={place.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + (place.address || ''))}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2 px-3 rounded-xl bg-[#FAF8F5] hover:bg-[#F2EFE8] border border-[#EBE7DF] text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                      title="View on Google Maps"
                     >
-                      <Star className="w-3.5 h-3.5 text-amber-500" />
-                      <span>Reviews</span>
-                    </button>
+                      <span>Google Maps ↗</span>
+                    </a>
                   </div>
 
-                  {onAddToItinerary && (
-                    <button
-                      onClick={() => onAddToItinerary(place)}
-                      className="w-full py-2.5 px-3 rounded-xl bg-[#C24B27] hover:bg-[#A83D1D] text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add to Itinerary Day</span>
-                    </button>
-                  )}
+                    {onAddToItinerary && (
+                      <button
+                        onClick={() => onAddToItinerary(place)}
+                        className="w-full py-2.5 px-3 rounded-xl bg-[#C24B27] hover:bg-[#A83D1D] text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add to Itinerary Day</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         )}
       </div>

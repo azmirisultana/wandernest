@@ -144,7 +144,7 @@ function createHotelMarkerIcon(hotel) {
 // Available Real Map Styles (Strictly English Labels Worldwide)
 const MAP_TILES = {
   streets: {
-    name: 'English Streets',
+    name: 'Map',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
     attribution: 'Tiles &copy; Esri'
   },
@@ -166,8 +166,7 @@ export default function WanderMap({
   targetDay = null,
   onSelectPlace,
   onAddToItinerary,
-  onOpenStreetView,
-  onOpenReviews
+  onOpenStreetView
 }) {
   const mapRef = useRef(null);
   const [mapStyle, setMapStyle] = useState('streets'); // 'streets' | 'satellite'
@@ -284,22 +283,24 @@ export default function WanderMap({
                     </div>
 
                     {/* Action buttons inside popup */}
-                    <div className="grid grid-cols-2 gap-1.5 pt-1">
+                    <div className="flex items-center gap-1.5 pt-1">
                       <button
                         onClick={() => onOpenStreetView && onOpenStreetView(item)}
-                        className="py-1.5 px-2 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-[10px] font-semibold text-[#141413] flex items-center justify-center gap-1 transition-colors shadow-2xs"
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-[10px] font-semibold text-[#141413] flex items-center justify-center gap-1 transition-colors shadow-2xs"
                       >
                         <Compass className="w-3 h-3 text-[#C24B27]" />
                         <span>360° Street</span>
                       </button>
 
-                      <button
-                        onClick={() => onOpenReviews && onOpenReviews(item)}
-                        className="py-1.5 px-2 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-[10px] font-semibold text-[#141413] flex items-center justify-center gap-1 transition-colors shadow-2xs"
+                      <a
+                        href={item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name + ' ' + (item.address || ''))}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-1.5 px-2.5 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-[10px] font-semibold text-blue-600 hover:text-blue-700 flex items-center justify-center gap-1 transition-colors shadow-2xs"
+                        title="View on Google Maps"
                       >
-                        <Star className="w-3 h-3 text-amber-500" />
-                        <span>Reviews</span>
-                      </button>
+                        <span>Google Maps ↗</span>
+                      </a>
                     </div>
                   </div>
                 </div>
@@ -399,23 +400,25 @@ export default function WanderMap({
                       )}
                     </div>
 
-                    {/* Street View & Reviews */}
-                    <div className="grid grid-cols-2 gap-1.5 pt-1">
+                    {/* Street View & Google Maps Link */}
+                    <div className="flex items-center gap-1.5 pt-1">
                       <button
                         onClick={() => onOpenStreetView && onOpenStreetView(place)}
-                        className="py-1.5 px-2 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-[10px] font-semibold text-[#141413] flex items-center justify-center gap-1 transition-colors shadow-2xs"
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-[10px] font-semibold text-[#141413] flex items-center justify-center gap-1 transition-colors shadow-2xs"
                       >
                         <Compass className="w-3 h-3 text-[#C24B27]" />
                         <span>360° Street</span>
                       </button>
 
-                      <button
-                        onClick={() => onOpenReviews && onOpenReviews(place)}
-                        className="py-1.5 px-2 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-[10px] font-semibold text-[#141413] flex items-center justify-center gap-1 transition-colors shadow-2xs"
+                      <a
+                        href={place.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + (place.address || ''))}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-1.5 px-2.5 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-[10px] font-semibold text-blue-600 hover:text-blue-700 flex items-center justify-center gap-1 transition-colors shadow-2xs"
+                        title="View on Google Maps"
                       >
-                        <Star className="w-3 h-3 text-amber-500" />
-                        <span>Reviews</span>
-                      </button>
+                        <span>Google Maps ↗</span>
+                      </a>
                     </div>
 
                     {onAddToItinerary && (
@@ -448,7 +451,7 @@ export default function WanderMap({
                 : 'text-mutedText hover:text-[#141413]'
             }`}
           >
-            English Streets
+            Map
           </button>
           <button
             type="button"

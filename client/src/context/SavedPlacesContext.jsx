@@ -105,12 +105,22 @@ export function SavedPlacesProvider({ children }) {
     });
   };
 
+  const updatePlaceNote = (placeId, note) => {
+    if (!placeId || !currentUid) return;
+    setSavedPlaces(prev => {
+      const updated = prev.map(p => p.id === placeId ? { ...p, note: (note || '').trim() } : p);
+      persistForUser(updated, currentUid);
+      return updated;
+    });
+  };
+
   return (
     <SavedPlacesContext.Provider value={{
       savedPlaces,
       isSaved,
       toggleSavePlace,
-      removeSavedPlace
+      removeSavedPlace,
+      updatePlaceNote
     }}>
       {children}
     </SavedPlacesContext.Provider>

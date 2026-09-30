@@ -12,7 +12,6 @@ import {
 import WanderMap from '../map/WanderMap';
 import FlightModal from '../flights/FlightModal';
 import StreetViewModal from '../streetview/StreetViewModal';
-import ReviewsModal from '../reviews/ReviewsModal';
 import { useSavedPlaces } from '../../context/SavedPlacesContext';
 import { useCurrency } from '../../context/CurrencyContext';
 import {
@@ -530,13 +529,6 @@ export default function TripPlanner({
         place={streetViewPlace}
       />
 
-      {/* Google Reviews Modal */}
-      <ReviewsModal
-        isOpen={isReviewsOpen}
-        onClose={() => setIsReviewsOpen(false)}
-        place={reviewsPlace}
-      />
-
       {/* Flight Search Modal */}
       <FlightModal
         isOpen={isFlightModalOpen}
@@ -968,13 +960,15 @@ export default function TripPlanner({
                                     <span>View Street (360°)</span>
                                   </button>
 
-                                  <button
-                                    onClick={() => openReviews(item)}
-                                    className="px-2.5 py-1 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-[11px] font-semibold text-[#141413] flex items-center gap-1 transition-colors shadow-2xs"
+                                  <a
+                                    href={item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name + ' ' + (item.address || cleanDestination))}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-2.5 py-1 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors shadow-2xs"
+                                    title="View on Google Maps"
                                   >
-                                    <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                                    <span>Reviews</span>
-                                  </button>
+                                    <span>Google Maps ↗</span>
+                                  </a>
                                 </div>
 
                                 <select
@@ -1255,7 +1249,7 @@ export default function TripPlanner({
 
                             {/* Actions & Rating */}
                             <div className="mt-2.5 pt-2 border-t border-[#EBE7DF] flex items-center justify-between gap-2 flex-wrap">
-                              {place.rating ? (
+                              {place.source === 'google' && place.rating ? (
                                 <span className="flex items-center gap-1 text-xs text-amber-500 font-semibold">
                                   <Star className="w-3.5 h-3.5 fill-amber-500" />
                                   <span>{place.rating}</span>
@@ -1264,9 +1258,15 @@ export default function TripPlanner({
                                   ) : null}
                                 </span>
                               ) : (
-                                <span className="text-[11px] text-mutedText font-medium">
-                                  {place.tagLabel || 'Spot'}
-                                </span>
+                                <a
+                                  href={place.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + ' ' + (place.address || cleanDestination))}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+                                  title="View genuine ratings, reviews and photos on Google Maps"
+                                >
+                                  <span>Google Maps ↗</span>
+                                </a>
                               )}
 
                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -1299,14 +1299,6 @@ export default function TripPlanner({
                                 >
                                   <Compass className="w-3 h-3 text-[#C24B27]" />
                                   <span>360° Street</span>
-                                </button>
-
-                                <button
-                                  onClick={() => openReviews(place)}
-                                  className="px-2.5 py-1 rounded-lg bg-[#FAF8F5] hover:bg-[#F1EDE4] border border-[#EBE7DF] text-[10px] font-semibold text-[#141413] flex items-center gap-1 transition-colors shadow-2xs"
-                                  title="Read Google Reviews"
-                                >
-                                  <span>Reviews</span>
                                 </button>
 
                                 {isAdded ? (
@@ -1377,14 +1369,13 @@ export default function TripPlanner({
             onSelectPlace={handleMapSelectPlace}
             onAddToItinerary={(place) => handleAddToItinerary(place, activeDay)}
             onOpenStreetView={openStreetView}
-            onOpenReviews={openReviews}
           />
         </div>
       </div>
 
       {/* Set Hotel / Basecamp Modal: ONLY Real Available Hotels from Destination */}
       {isHotelModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 border border-[#EBE7DF] space-y-4 text-[#141413] animate-slide-up max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-[#EBE7DF] pb-3 shrink-0">
               <div className="flex items-center gap-2">
@@ -1524,7 +1515,7 @@ export default function TripPlanner({
 
       {/* Add Spot to Day Modal */}
       {isAddSpotModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 border border-[#EBE7DF] space-y-4 text-[#141413] animate-slide-up max-h-[85vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-[#EBE7DF] pb-3 shrink-0">

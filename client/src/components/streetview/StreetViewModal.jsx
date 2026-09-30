@@ -24,7 +24,7 @@ export default function StreetViewModal({ isOpen, onClose, place }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-[#141413]/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-3 sm:p-6 bg-[#141413]/60 backdrop-blur-sm animate-fade-in">
       <div 
         className="relative w-full max-w-4xl bg-white border border-borderSoft rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-slide-up text-[#141413]"
         style={{ transition: 'transform 200ms ease' }}

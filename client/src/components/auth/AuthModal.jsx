@@ -110,7 +110,7 @@ export default function AuthModal({ isOpen, onClose, initialSignUp = false }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
       <div
         className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-[#EBE7DF] overflow-hidden text-[#141413] animate-slide-up"
         style={{ transition: 'transform 200ms ease' }}

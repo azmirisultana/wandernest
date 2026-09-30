@@ -28,7 +28,7 @@ export default function FlightModal({ isOpen, onClose, destination, startDate })
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
       <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
         {/* Header with Airplane motif */}
         <div className="bg-gradient-to-r from-brand-500 via-rose-500 to-amber-500 p-6 text-white relative">
