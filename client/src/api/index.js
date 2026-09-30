@@ -1,4 +1,11 @@
 // WanderNest Client API Service
+import {
+  CURATED_DESTINATIONS,
+  fallbackSearchDestinations,
+  fallbackFetchPlaces,
+  fallbackFetchWeather
+} from './clientFallbacks.js';
+
 const getBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_URL;
   if (!envUrl) return '/api';
@@ -28,20 +35,52 @@ async function safeFetchJson(url, options = {}) {
 }
 
 export async function fetchFeaturedDestinations() {
-  return safeFetchJson(`${BASE_URL}/destinations/featured`);
+  try {
+    const data = await safeFetchJson(`${BASE_URL}/destinations/featured`);
+    if (data && data.success && Array.isArray(data.data) && data.data.length > 0) {
+      return data;
+    }
+  } catch (err) {
+    console.info('[WanderNest] Using fallback featured destinations:', err.message);
+  }
+  return { success: true, data: CURATED_DESTINATIONS };
 }
 
 export async function searchDestinations(query) {
   if (!query || query.trim().length < 2) return { success: true, data: [] };
-  return safeFetchJson(`${BASE_URL}/destinations/search?q=${encodeURIComponent(query)}`);
+  try {
+    const data = await safeFetchJson(`${BASE_URL}/destinations/search?q=${encodeURIComponent(query)}`);
+    if (data && data.success && Array.isArray(data.data)) {
+      return data;
+    }
+  } catch (err) {
+    console.info('[WanderNest] Using fallback search:', err.message);
+  }
+  return fallbackSearchDestinations(query);
 }
 
 export async function fetchWeather(lat, lng) {
-  return safeFetchJson(`${BASE_URL}/weather?lat=${lat}&lng=${lng}`);
+  try {
+    const data = await safeFetchJson(`${BASE_URL}/weather?lat=${lat}&lng=${lng}`);
+    if (data && data.success && data.data) {
+      return data;
+    }
+  } catch (err) {
+    console.info('[WanderNest] Using fallback weather:', err.message);
+  }
+  return fallbackFetchWeather(lat, lng);
 }
 
 export async function fetchPlaces(lat, lng, category = 'all', radius = 6000) {
-  return safeFetchJson(`${BASE_URL}/places?lat=${lat}&lng=${lng}&category=${category}&radius=${radius}`);
+  try {
+    const data = await safeFetchJson(`${BASE_URL}/places?lat=${lat}&lng=${lng}&category=${category}&radius=${radius}`);
+    if (data && data.success && Array.isArray(data.data) && data.data.length > 0) {
+      return data;
+    }
+  } catch (err) {
+    console.info('[WanderNest] Using fallback places engine:', err.message);
+  }
+  return fallbackFetchPlaces(lat, lng, category);
 }
 
 export async function fetchFlights(params = {}) {
