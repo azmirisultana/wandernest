@@ -7,6 +7,7 @@ import placesRouter from './routes/places.js';
 import weatherRouter from './routes/weather.js';
 import tripsRouter from './routes/trips.js';
 import flightsRouter from './routes/flights.js';
+import adminRouter from './routes/admin.js';
 
 dotenv.config();
 
@@ -30,6 +31,7 @@ app.use('/api/places', placesRouter);
 app.use('/api/weather', weatherRouter);
 app.use('/api/trips', tripsRouter);
 app.use('/api/flights', flightsRouter);
+app.use('/api/admin', adminRouter);
 
 // Root route
 app.get('/', (req, res) => {

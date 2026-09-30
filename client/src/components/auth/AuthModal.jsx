@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Mail, Lock, AlertCircle, Eye, EyeOff, User } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { X, Mail, Lock, AlertCircle, Eye, EyeOff, User, Shield } from 'lucide-react';
+import { useAuth, ADMIN_CONFIG } from '../../context/AuthContext';
 
 export default function AuthModal({ isOpen, onClose, initialSignUp = false }) {
   const { loginWithGoogle, loginWithEmail, signupWithEmail, authError } = useAuth();
@@ -274,6 +274,31 @@ export default function AuthModal({ isOpen, onClose, initialSignUp = false }) {
                 {isSignUp ? 'Sign in' : 'Create one'}
               </button>
             </p>
+          </div>
+
+          {/* Quick Admin Demo Portal Card */}
+          <div className="mt-3 pt-3 border-t border-[#EBE7DF]/80">
+            <div className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200/80 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <Shield className="w-4 h-4 text-amber-600 shrink-0" />
+                <div className="truncate">
+                  <span className="font-bold text-[11px] text-amber-900 block leading-tight">Admin Demo Portal</span>
+                  <span className="text-[10px] text-amber-800 font-mono">admin@wandernest.com / admin123</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(false);
+                  setEmail(ADMIN_CONFIG.email);
+                  setPassword(ADMIN_CONFIG.password);
+                  setLocalErr('');
+                }}
+                className="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-100 text-amber-900 font-bold text-[10px] border border-amber-300 shadow-2xs transition-colors shrink-0 cursor-pointer"
+              >
+                Fill Admin
+              </button>
+            </div>
           </div>
         </div>
       </div>

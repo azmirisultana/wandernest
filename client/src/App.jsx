@@ -12,6 +12,7 @@ import ProfilePage from './components/profile/ProfilePage';
 import AuthModal from './components/auth/AuthModal';
 import CreateTripModal from './components/planner/CreateTripModal';
 import StreetViewModal from './components/streetview/StreetViewModal';
+import AdminDashboard from './components/admin/AdminDashboard';
 import { useAuth } from './context/AuthContext';
 import { fetchTrips, fetchTrip, createTrip, addItineraryItem } from './api';
 
@@ -21,9 +22,11 @@ export default function App() {
   
   // Navigation View:
   // If not logged in -> 'landing'
-  // If logged in -> defaults to 'explore'
+  // If admin -> 'admin'
+  // If logged in traveler -> defaults to 'explore'
   const [currentView, setCurrentView] = useState(() => {
-    return currentUser ? 'explore' : 'landing';
+    if (!currentUser) return 'landing';
+    return (currentUser.isAdmin || currentUser.role === 'admin') ? 'admin' : 'explore';
   });
 
   // Scoped per-user active trip: fresh users (e.g. test2) have null active trip!
@@ -97,9 +100,9 @@ export default function App() {
       const userTrip = loadActiveTripForUid(currentUser.uid);
       setActiveTrip(userTrip);
 
-      // If user just logged in while on landing, redirect to explore!
+      // If user just logged in while on landing, redirect to admin if admin, else explore!
       if (currentView === 'landing') {
-        setCurrentView('explore');
+        setCurrentView(currentUser.isAdmin || currentUser.role === 'admin' ? 'admin' : 'explore');
       }
       window.scrollTo(0, 0);
     } else {
@@ -562,6 +565,14 @@ export default function App() {
               handleStartPlanning(targetPlace || viewingPlace, initialPlace);
             }}
             onOpenStreetView={handleOpenStreetView}
+          />
+        )}
+
+        {/* 10. Clean and Simple Admin Monitoring Panel */}
+        {currentView === 'admin' && (
+          <AdminDashboard
+            onBackToWorkspace={() => setCurrentView('workspace')}
+            onExplorePlace={handleExplorePlace}
           />
         )}
       </main>

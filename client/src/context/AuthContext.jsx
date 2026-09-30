@@ -18,8 +18,15 @@ export function getDeterministicUid(identifier) {
   return 'user_' + (clean || 'traveler');
 }
 
+// Pre-configured Dummy Admin Credentials
+export const ADMIN_CONFIG = {
+  email: 'admin@wandernest.com',
+  password: 'admin123',
+  displayName: 'WanderNest Administrator'
+};
+
 // User registry helper to ensure users retain their credentials and isolated workspaces
-function getUsersRegistry() {
+export function getUsersRegistry() {
   try {
     const raw = localStorage.getItem('wandernest_users_registry');
     return raw ? JSON.parse(raw) : {};
@@ -28,7 +35,7 @@ function getUsersRegistry() {
   }
 }
 
-function saveUsersRegistry(registry) {
+export function saveUsersRegistry(registry) {
   try {
     localStorage.setItem('wandernest_users_registry', JSON.stringify(registry));
   } catch (e) {}
@@ -100,6 +107,31 @@ export function AuthProvider({ children }) {
     const cleanId = (emailOrUsername || '').toLowerCase().trim();
     if (!cleanId) throw new Error('Please enter your email or username.');
 
+    // 1. Check for Dummy Admin credentials
+    if (cleanId === 'admin@wandernest.com' || cleanId === 'admin') {
+      if (password !== ADMIN_CONFIG.password) {
+        throw new Error(`Incorrect admin password. Please use "${ADMIN_CONFIG.password}" to access the admin panel.`);
+      }
+      const adminUser = {
+        uid: 'admin_root',
+        email: ADMIN_CONFIG.email,
+        displayName: ADMIN_CONFIG.displayName,
+        role: 'admin',
+        isAdmin: true,
+        photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        isGuest: false,
+        createdAt: '2026-01-01T00:00:00.000Z'
+      };
+
+      const registry = getUsersRegistry();
+      registry[ADMIN_CONFIG.email] = adminUser;
+      saveUsersRegistry(registry);
+
+      setCurrentUser(adminUser);
+      localStorage.setItem('wandernest_user', JSON.stringify(adminUser));
+      return adminUser;
+    }
+
     try {
       if (!auth) throw new Error("Firebase not initialized");
       const res = await signInWithEmailAndPassword(auth, cleanId, password);
@@ -138,6 +170,10 @@ export function AuthProvider({ children }) {
       localStorage.setItem('wandernest_user', JSON.stringify(newUser));
       return newUser;
     }
+  };
+
+  const loginAsAdmin = async () => {
+    return loginWithEmail(ADMIN_CONFIG.email, ADMIN_CONFIG.password);
   };
 
   const signupWithEmail = async (emailOrUsername, password, fullName = '') => {
@@ -230,6 +266,8 @@ export function AuthProvider({ children }) {
       loginWithGoogle, 
       loginWithEmail, 
       signupWithEmail, 
+      loginAsAdmin,
+      ADMIN_CONFIG,
       updateUserProfile,
       continueAsGuest, 
       logout 

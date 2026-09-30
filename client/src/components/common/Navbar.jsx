@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   User, LogOut, Compass, Hotel, Plane, Bookmark, MapPin,
-  Search, X, ArrowRight
+  Search, X, ArrowRight, Shield
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSavedPlaces } from '../../context/SavedPlacesContext';
@@ -212,6 +212,22 @@ export default function Navbar({
                 <span>Workspace ({activeTrip.destination})</span>
               </button>
             ) : null}
+
+            {/* Admin Portal Button */}
+            {(currentUser?.isAdmin || currentUser?.role === 'admin') && (
+              <button
+                onClick={() => onNavigateView && onNavigateView('admin')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                  currentView === 'admin'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-amber-500/15 text-amber-900 hover:bg-amber-500/25 border border-amber-300'
+                }`}
+                title="WanderNest Administration & Monitoring"
+              >
+                <Shield className="w-3.5 h-3.5 text-amber-600" />
+                <span>Admin Panel</span>
+              </button>
+            )}
           </nav>
         ) : null}
 
