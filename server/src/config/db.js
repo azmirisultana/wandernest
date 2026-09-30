@@ -35,7 +35,101 @@ export async function initDatabase() {
     // Test connectivity
     await pool.query('SELECT 1;');
 
-    // Create tables if they do not exist
+    // 1. users
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        user_id VARCHAR(128) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        password VARCHAR(255) NOT NULL,
+        phone VARCHAR(50),
+        preference VARCHAR(255) DEFAULT 'Adventure, Culture, Relaxation',
+        profile_image TEXT,
+        join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        role ENUM('user', 'admin') DEFAULT 'user',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 2. moods
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS moods (
+        mood_id VARCHAR(64) PRIMARY KEY,
+        mood_name VARCHAR(100) NOT NULL,
+        description TEXT,
+        image_icon TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 3. destinations
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS destinations (
+        destination_id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        location VARCHAR(255) NOT NULL,
+        description TEXT,
+        budget DECIMAL(10, 2) DEFAULT 0.00,
+        best_season VARCHAR(100),
+        mood_type VARCHAR(64),
+        image TEXT,
+        average_rating DECIMAL(3, 2) DEFAULT 4.50,
+        country VARCHAR(128),
+        latitude DECIMAL(10, 7),
+        longitude DECIMAL(10, 7),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (mood_type) REFERENCES moods(mood_id) ON DELETE SET NULL
+      );
+    `);
+
+    // 4. trip_plans
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS trip_plans (
+        trip_id VARCHAR(64) PRIMARY KEY,
+        user_id VARCHAR(128) NOT NULL,
+        destination_id VARCHAR(64),
+        travel_date DATE,
+        duration_days INT DEFAULT 3,
+        estimated_cost DECIMAL(10, 2) DEFAULT 0.00,
+        transport_type VARCHAR(100) DEFAULT 'Flight',
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        FOREIGN KEY (destination_id) REFERENCES destinations(destination_id) ON DELETE SET NULL
+      );
+    `);
+
+    // 5. favorites
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS favorites (
+        favorite_id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(128) NOT NULL,
+        destination_id VARCHAR(64) NOT NULL,
+        saved_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_user_fav_dest (user_id, destination_id),
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        FOREIGN KEY (destination_id) REFERENCES destinations(destination_id) ON DELETE CASCADE
+      );
+    `);
+
+    // 6. reviews
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS reviews (
+        review_id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(128) NOT NULL,
+        destination_id VARCHAR(64) NOT NULL,
+        rating DECIMAL(2, 1) NOT NULL DEFAULT 5.0,
+        comment TEXT,
+        review_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        FOREIGN KEY (destination_id) REFERENCES destinations(destination_id) ON DELETE CASCADE
+      );
+    `);
+
+    // 7. trips
     await pool.query(`
       CREATE TABLE IF NOT EXISTS trips (
         id VARCHAR(64) PRIMARY KEY,
@@ -55,6 +149,20 @@ export async function initDatabase() {
       );
     `);
 
+    // 8. itinerary_days
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS itinerary_days (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        trip_id VARCHAR(64) NOT NULL,
+        day_number INT NOT NULL,
+        date DATE,
+        title VARCHAR(255),
+        notes TEXT,
+        FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE
+      );
+    `);
+
+    // 9. itinerary_items
     await pool.query(`
       CREATE TABLE IF NOT EXISTS itinerary_items (
         id VARCHAR(64) PRIMARY KEY,
@@ -76,6 +184,7 @@ export async function initDatabase() {
       );
     `);
 
+    // 10. expenses
     await pool.query(`
       CREATE TABLE IF NOT EXISTS expenses (
         id VARCHAR(64) PRIMARY KEY,
@@ -89,6 +198,7 @@ export async function initDatabase() {
       );
     `);
 
+    // 11. saved_places
     await pool.query(`
       CREATE TABLE IF NOT EXISTS saved_places (
         id VARCHAR(64) PRIMARY KEY,
@@ -104,10 +214,23 @@ export async function initDatabase() {
       );
     `);
 
+    // Compatibility Views
+    try {
+      await pool.query('CREATE OR REPLACE VIEW user AS SELECT * FROM users;');
+      await pool.query('CREATE OR REPLACE VIEW mood AS SELECT * FROM moods;');
+      await pool.query('CREATE OR REPLACE VIEW destination AS SELECT * FROM destinations;');
+      await pool.query('CREATE OR REPLACE VIEW trip_plan AS SELECT * FROM trip_plans;');
+      await pool.query('CREATE OR REPLACE VIEW favorite AS SELECT * FROM favorites;');
+      await pool.query('CREATE OR REPLACE VIEW review AS SELECT * FROM reviews;');
+    } catch (viewErr) {
+      // Non-fatal if view creation lacks privileges on restricted DBs
+      console.warn('Note: Compatibility views creation skipped or non-fatal:', viewErr.message);
+    }
+
     isConnected = true;
-    console.log('✅ Connected to local MySQL successfully and initialized WanderNest tables.');
+    console.log('✅ Connected to MySQL successfully and initialized all WanderNest & ER Diagram tables.');
   } catch (error) {
-    console.warn('⚠️  Could not connect to local MySQL:', error.message);
+    console.warn('⚠️  Could not connect to MySQL:', error.message);
     console.warn('⚡ Using memory-backed store fallback. Start MySQL (e.g. XAMPP / MySQL Service) to enable full persistence.');
     isConnected = false;
   }

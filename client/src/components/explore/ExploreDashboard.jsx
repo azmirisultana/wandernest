@@ -989,7 +989,7 @@ export default function ExploreDashboard({
               className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#141413] hover:bg-[#C24B27] text-white text-xs font-bold shadow-xs transition-all active:scale-95 shrink-0 self-start sm:self-center cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>+ Plan a New Trip</span>
+              <span>Plan a New Trip</span>
             </button>
           </div>
 
@@ -1091,16 +1091,16 @@ export default function ExploreDashboard({
           </div>
 
           {/* Search bar specifically for popular places */}
-          <div className="relative w-full sm:w-64 shrink-0">
+          {/* <div className="relative w-full sm:w-64 shrink-0">
             <Search className="w-4 h-4 text-mutedText absolute left-3.5 top-3" />
             <input
               type="text"
               value={popularSearchTerm}
               onChange={(e) => setPopularSearchTerm(e.target.value)}
-              placeholder="Filter destinations..."
+              placeholder="search"
               className="w-full pl-9 pr-4 py-2 rounded-2xl bg-white border border-borderSoft text-xs font-semibold text-[#141413] focus:outline-none focus:border-[#C24B27] shadow-2xs"
             />
-          </div>
+          </div> */}
         </div>
 
         {/* Categories Bar */}
@@ -1109,8 +1109,8 @@ export default function ExploreDashboard({
             <button
               onClick={() => setSelectedPopularCategory('all')}
               className={`px-4 py-2 rounded-full text-xs font-bold transition-all shadow-2xs cursor-pointer ${selectedPopularCategory === 'all'
-                  ? 'bg-[#141413] text-white shadow-xs'
-                  : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
+                ? 'bg-[#141413] text-white shadow-xs'
+                : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
                 }`}
             >
               🌟 All Destinations
@@ -1119,8 +1119,8 @@ export default function ExploreDashboard({
             <button
               onClick={() => setSelectedPopularCategory('beach')}
               className={`px-4 py-2 rounded-full text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer ${selectedPopularCategory === 'beach'
-                  ? 'bg-[#141413] text-white shadow-xs'
-                  : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
+                ? 'bg-[#141413] text-white shadow-xs'
+                : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
                 }`}
             >
               <Palmtree className="w-3.5 h-3.5 text-amber-500" />
@@ -1130,8 +1130,8 @@ export default function ExploreDashboard({
             <button
               onClick={() => setSelectedPopularCategory('mountain')}
               className={`px-4 py-2 rounded-full text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer ${selectedPopularCategory === 'mountain'
-                  ? 'bg-[#141413] text-white shadow-xs'
-                  : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
+                ? 'bg-[#141413] text-white shadow-xs'
+                : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
                 }`}
             >
               <Mountain className="w-3.5 h-3.5 text-emerald-500" />
@@ -1141,8 +1141,8 @@ export default function ExploreDashboard({
             <button
               onClick={() => setSelectedPopularCategory('historic')}
               className={`px-4 py-2 rounded-full text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer ${selectedPopularCategory === 'historic'
-                  ? 'bg-[#141413] text-white shadow-xs'
-                  : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
+                ? 'bg-[#141413] text-white shadow-xs'
+                : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
                 }`}
             >
               <Landmark className="w-3.5 h-3.5 text-[#C24B27]" />
@@ -1152,8 +1152,8 @@ export default function ExploreDashboard({
             <button
               onClick={() => setSelectedPopularCategory('metropolis')}
               className={`px-4 py-2 rounded-full text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer ${selectedPopularCategory === 'metropolis'
-                  ? 'bg-[#141413] text-white shadow-xs'
-                  : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
+                ? 'bg-[#141413] text-white shadow-xs'
+                : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
                 }`}
             >
               <Building className="w-3.5 h-3.5 text-blue-500" />
@@ -1163,8 +1163,8 @@ export default function ExploreDashboard({
             <button
               onClick={() => setSelectedPopularCategory('island')}
               className={`px-4 py-2 rounded-full text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer ${selectedPopularCategory === 'island'
-                  ? 'bg-[#141413] text-white shadow-xs'
-                  : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
+                ? 'bg-[#141413] text-white shadow-xs'
+                : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
                 }`}
             >
               <Palmtree className="w-3.5 h-3.5 text-teal-500" />
@@ -1185,8 +1185,8 @@ export default function ExploreDashboard({
               <button
                 onClick={() => setSelectedPopularCategory('art')}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${selectedPopularCategory === 'art'
-                    ? 'bg-[#141413] text-white shadow-xs'
-                    : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
+                  ? 'bg-[#141413] text-white shadow-xs'
+                  : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
                   }`}
               >
                 🏰 Art & Architecture
@@ -1195,8 +1195,8 @@ export default function ExploreDashboard({
               <button
                 onClick={() => setSelectedPopularCategory('nature')}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${selectedPopularCategory === 'nature'
-                    ? 'bg-[#141413] text-white shadow-xs'
-                    : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
+                  ? 'bg-[#141413] text-white shadow-xs'
+                  : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
                   }`}
               >
                 🌲 Nature & Wildlife
@@ -1538,8 +1538,8 @@ export default function ExploreDashboard({
                       <button
                         onClick={() => handleSetBasecampHotel(hotel)}
                         className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer ${isBasecamp
-                            ? 'bg-amber-500 text-white'
-                            : 'bg-[#141413] hover:bg-[#C24B27] text-white'
+                          ? 'bg-amber-500 text-white'
+                          : 'bg-[#141413] hover:bg-[#C24B27] text-white'
                           }`}
                       >
                         <Bed className="w-3.5 h-3.5" />
@@ -1564,8 +1564,8 @@ export default function ExploreDashboard({
                   key={tab.key}
                   onClick={() => setHighLevelTab(tab.key)}
                   className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold transition-all shadow-2xs cursor-pointer ${isCurrent
-                      ? 'bg-[#141413] text-white shadow-xs'
-                      : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
+                    ? 'bg-[#141413] text-white shadow-xs'
+                    : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
                     }`}
                 >
                   <Icon className={`w-4 h-4 ${isCurrent ? 'text-[#C24B27]' : 'text-mutedText'}`} />
@@ -1598,8 +1598,8 @@ export default function ExploreDashboard({
                   key={sub.key}
                   onClick={() => setSelectedSubCategory(sub.key)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${isSub
-                      ? 'bg-[#C24B27]/15 text-[#C24B27] border border-[#C24B27]/40'
-                      : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
+                    ? 'bg-[#C24B27]/15 text-[#C24B27] border border-[#C24B27]/40'
+                    : 'bg-white hover:bg-[#FAF8F5] text-mutedText border border-borderSoft'
                     }`}
                 >
                   {sub.label}
@@ -1612,8 +1612,8 @@ export default function ExploreDashboard({
           <div className="p-4 sm:p-5 rounded-3xl bg-white border border-borderSoft shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-3.5">
               <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${baseHotel && isBasecampInCurrentCity
-                  ? 'bg-amber-50 text-amber-600 border-amber-200'
-                  : 'bg-[#FAF8F5] text-mutedText border-borderSoft'
+                ? 'bg-amber-50 text-amber-600 border-amber-200'
+                : 'bg-[#FAF8F5] text-mutedText border-borderSoft'
                 }`}>
                 <Bed className="w-6 h-6" />
               </div>
@@ -1704,8 +1704,8 @@ export default function ExploreDashboard({
                         <button
                           onClick={() => toggleSavePlace(place)}
                           className={`absolute top-3 right-3 p-2 rounded-xl backdrop-blur-md transition-all shadow-xs cursor-pointer ${saved
-                              ? 'bg-[#C24B27] text-white'
-                              : 'bg-white/90 text-[#141413] hover:bg-white'
+                            ? 'bg-[#C24B27] text-white'
+                            : 'bg-white/90 text-[#141413] hover:bg-white'
                             }`}
                           title={saved ? 'Remove from saved' : 'Save place'}
                         >
@@ -1926,8 +1926,8 @@ export default function ExploreDashboard({
                             type="button"
                             onClick={() => handleSetBasecampHotel(hotel)}
                             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${isCurrent
-                                ? 'bg-amber-500 text-white'
-                                : 'bg-[#141413] hover:bg-[#C24B27] text-white'
+                              ? 'bg-amber-500 text-white'
+                              : 'bg-[#141413] hover:bg-[#C24B27] text-white'
                               }`}
                           >
                             {isCurrent ? '✓ Active Basecamp' : 'Set as Basecamp'}

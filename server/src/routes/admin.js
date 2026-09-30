@@ -31,10 +31,26 @@ router.get('/metrics', async (req, res) => {
       const [[expensesCount]] = await pool.query('SELECT COUNT(*) as count FROM expenses');
       const [[savedCount]] = await pool.query('SELECT COUNT(*) as count FROM saved_places');
 
+      // ER Diagram table counts
+      let usersCount = { count: 0 }, moodsCount = { count: 0 }, destinationsCount = { count: 0 };
+      let tripPlansCount = { count: 0 }, favoritesCount = { count: 0 }, reviewsCount = { count: 0 };
+      try { [[usersCount]] = await pool.query('SELECT COUNT(*) as count FROM users'); } catch (_) {}
+      try { [[moodsCount]] = await pool.query('SELECT COUNT(*) as count FROM moods'); } catch (_) {}
+      try { [[destinationsCount]] = await pool.query('SELECT COUNT(*) as count FROM destinations'); } catch (_) {}
+      try { [[tripPlansCount]] = await pool.query('SELECT COUNT(*) as count FROM trip_plans'); } catch (_) {}
+      try { [[favoritesCount]] = await pool.query('SELECT COUNT(*) as count FROM favorites'); } catch (_) {}
+      try { [[reviewsCount]] = await pool.query('SELECT COUNT(*) as count FROM reviews'); } catch (_) {}
+
       counts.trips = tripsCount?.count || 0;
       counts.itinerary_items = itemsCount?.count || 0;
       counts.expenses = expensesCount?.count || 0;
       counts.saved_places = savedCount?.count || 0;
+      counts.users = usersCount?.count || 0;
+      counts.moods = moodsCount?.count || 0;
+      counts.destinations = destinationsCount?.count || 0;
+      counts.trip_plans = tripPlansCount?.count || 0;
+      counts.favorites = favoritesCount?.count || 0;
+      counts.reviews = reviewsCount?.count || 0;
 
       // Fetch recent trips
       const [trips] = await pool.query(
