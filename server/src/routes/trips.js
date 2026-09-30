@@ -13,15 +13,25 @@ router.get('/', async (req, res) => {
 
   try {
     if (isConnected && pool) {
-      const [rows] = await pool.query(
+      let [rows] = await pool.query(
         'SELECT * FROM trips WHERE user_id = ? ORDER BY created_at DESC',
         [userId]
       );
+      // Fallback for showcase demo when not logged in
+      if (!rows.length && (userId === 'guest_default' || !req.query.userId)) {
+        const [showcaseRows] = await pool.query(
+          'SELECT * FROM trips ORDER BY created_at DESC LIMIT 6'
+        );
+        rows = showcaseRows;
+      }
       return res.json({ success: true, data: rows });
     } else {
-      const userTrips = Array.from(memoryDb.trips.values())
+      let userTrips = Array.from(memoryDb.trips.values())
         .filter(t => t.user_id === userId)
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      if (!userTrips.length && (userId === 'guest_default' || !req.query.userId)) {
+        userTrips = Array.from(memoryDb.trips.values()).slice(-6).reverse();
+      }
       return res.json({ success: true, data: userTrips });
     }
   } catch (error) {
